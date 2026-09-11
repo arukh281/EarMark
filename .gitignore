@@ -1,0 +1,27 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+
+# Caches, datasets and checkpoints (see scripts/env.sh)
+.cache/
+data/
+checkpoints/
+
+# C++ and WebAssembly builds
+build/
+engine/build/
+
+# Node and Playwright
+node_modules/
+test-results/
+playwright-report/
+
+# macOS
+.DS_Store
+
+# Secrets
+.env
+.env.*
