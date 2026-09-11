@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "earmark"
+version = "0.1.0"
+description = "Personal voice isolation and personal-VAD barge-in gating for voice agents, with a C++17/WASM streaming engine."
+readme = "README.md"
+requires-python = ">=3.12"
+# Lower bounds match the environment the project is developed and tested in.
+dependencies = [
+    "torch>=2.14",
+    "numpy>=2.5",
+    "scipy>=1.18",
+    "soundfile>=0.14",
+    "soxr>=1.1",
+    "pyyaml>=6.0",
+    "huggingface_hub>=1.31",
+    "pyarrow>=25",
+    "pesq>=0.0.4",
+    "pystoi>=0.4.1",
+]
+
+[project.optional-dependencies]
+# For `pip install -e .[dev]`; uv users get the same set from [dependency-groups].
+dev = ["pytest>=9.1"]
+
+[dependency-groups]
+dev = ["pytest>=9.1"]
+
+[tool.setuptools.packages.find]
+where = ["python"]
+include = ["earmark*"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+pythonpath = ["python"]
+# slow and gate tests are excluded by default; `make gates` (or `-m gate`) overrides this
+# because a later -m on the command line wins over the one in addopts.
+addopts = ["-ra", "--strict-markers", "-m", "not slow and not gate"]
+markers = [
+    "slow: long-running test (over ~60 s); run explicitly with -m slow",
+    "gate: acceptance gate that needs fetched evaluation data; run with make gates",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["python", "tests", "contract"]

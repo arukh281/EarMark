@@ -1,0 +1,57 @@
+# Earmark M0 signal contract.
+#
+# The single source of truth for every signal-level constant shared by the Python
+# model and trainer, the C++17/WASM engine and the web app. Edit this file, then run
+# `make codegen` to regenerate (and commit together with this file):
+#
+#   python/earmark/constants.py
+#   engine/include/earmark_constants.h
+#   web/src/constants.js
+#
+# `make contract-check` and tests/test_contract.py fail when any of them is stale.
+# Derived values (N_BINS, HOP_MS, NORM_ALPHA, ERB_WIDTHS, *_FRAMES, ...) are computed
+# by contract/codegen.py and never written here. Unknown keys are rejected.
+# See docs/CONTRACT.md for the conventions behind each value.
+
+version: 1
+
+audio:
+  sample_rate: 16000          # Hz; device audio is resampled to this rate
+  channels: 1                 # mono at the model boundary
+
+stft:
+  window: sqrt_hann_periodic  # w[n] = sin(pi * n / window_length), n = 0 .. window_length - 1
+  window_length: 320          # samples (20 ms); same window for analysis and synthesis
+  hop_length: 160             # samples (10 ms); one model step per hop
+  n_fft: 320                  # 161 one-sided bins (derived)
+  fft_norm: backward          # forward DFT unscaled, inverse scaled by 1 / n_fft
+  center: false               # causal framing, no reflect padding
+
+latency:
+  algorithmic_ms: 20          # must equal (window_length + lookahead_frames * hop_length) / sample_rate
+  lookahead_frames: 0
+
+erb:
+  n_bands: 32
+  min_bins_per_band: 2        # band widths derived with the DeepFilterNet erb_fb rule
+
+deep_filter:
+  order: 3                    # complex taps per bin: current frame and the 2 previous frames
+  n_bins: 64                  # applied to the lowest 64 bins (0 to 3150 Hz)
+  lookahead_frames: 0
+
+normalization:
+  kind: causal_exponential_mean
+  tau_s: 1.0                  # time constant in seconds; alpha = exp(-hop / (sample_rate * tau_s))
+
+embedding:
+  dim: 256                    # frozen WeSpeaker ResNet34-LM speaker embedding
+
+vad_label:
+  reference: utterance_peak   # threshold is relative to the utterance's peak frame energy
+  threshold_db: -40.0         # frame active when direct-path target energy > peak + threshold
+  hangover_ms: 50             # activity held this long after the last active frame
+
+bargein:
+  min_active_ms: 200          # a barge-in onset is >= 200 ms of activity ...
+  min_silence_ms: 300         # ... after >= 300 ms of inactivity

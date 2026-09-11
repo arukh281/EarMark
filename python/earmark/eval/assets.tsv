@@ -1,0 +1,15 @@
+# Earmark evaluation assets: the single source of truth for download URLs and SHA-256 pins.
+# Read by scripts/fetch_eval_data.sh and by earmark.eval.assets. Tab-separated columns:
+# name	group	bytes	sha256	dest	extract	url
+#   dest and extract are relative to the cache root (./.cache); extract "-" means keep the file as is.
+# SHA-256 values were pinned on 2026-09-11 after the first download; the DataShare MD5 values matched too
+# (clean 34eb1c0ba7ef667e9b966866c542fc16, noisy fb1b86caa31e8ba5b506c0c64da9aab5,
+#  logfiles 0d16f5b6afe12d64238d1e4a0e6ff6e8, testset_txt 6ca8ef3756f3769c05bb694e77ad29f0).
+# VoiceBank+DEMAND (Valentini-Botinhao 2017), Edinburgh DataShare handle 10283/2791, CC BY 4.0.
+clean_testset_wav.zip	vbd	154332064	b60bfc2b9df38466d8eb45057c087c6e5dee196c67a0ed7bca628ae2a8611c4e	data/vbd/zips/clean_testset_wav.zip	data/vbd	https://datashare.ed.ac.uk/server/api/core/bitstreams/dec213d3-bf57-4777-9663-c24bdce92d5e/content
+noisy_testset_wav.zip	vbd	170578854	ba4a893f45b627f15209ba30ab584dd495b3680cd6f216dd08d143a257611993	data/vbd/zips/noisy_testset_wav.zip	data/vbd	https://datashare.ed.ac.uk/server/api/core/bitstreams/13c1bfbf-14a6-41db-9b41-8f7310f01ad5/content
+logfiles.zip	vbd	115932	ab37c41f31bc2b6c204cc10c8e5bb8bde800307fdb49f277e366d986fefc9e39	data/vbd/zips/logfiles.zip	data/vbd/logfiles	https://datashare.ed.ac.uk/server/api/core/bitstreams/11185dc8-9cf1-405b-b858-35bd6a04aedd/content
+testset_txt.zip	vbd	440277	b31edb40b39c8ddc99eda13ea038f51be3065a8b70272c8051ffc2c4294cf1d3	data/vbd/zips/testset_txt.zip	data/vbd	https://datashare.ed.ac.uk/server/api/core/bitstreams/09e12592-879e-4749-bf6d-e34cf0d1ddf6/content
+# Official GTCRN checkpoints (Rong Xiaobin, MIT licence), pinned to commit 502ebfab64da7c4a9af78dcb9c6ceef1ebb01c73.
+model_trained_on_vctk.tar	gtcrn	737323	a0f0e04421d9fc1efe734d44191f5dc4b973ce59d6546af8d64ad9167e2a9944	models/gtcrn/model_trained_on_vctk.tar	-	https://raw.githubusercontent.com/Xiaobin-Rong/gtcrn/502ebfab64da7c4a9af78dcb9c6ceef1ebb01c73/checkpoints/model_trained_on_vctk.tar
+model_trained_on_dns3.tar	gtcrn	579819	a630d992cf792daf4ce2bb5bcf9c4d389f740a8f09c6e0971184697fe6371b79	models/gtcrn/model_trained_on_dns3.tar	-	https://raw.githubusercontent.com/Xiaobin-Rong/gtcrn/502ebfab64da7c4a9af78dcb9c6ceef1ebb01c73/checkpoints/model_trained_on_dns3.tar

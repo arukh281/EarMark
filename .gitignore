@@ -25,3 +25,12 @@ playwright-report/
 # Secrets
 .env
 .env.*
+
+# Earmark scaffold additions.
+# The data/ rule above is meant for the dataset directory; keep the source packages.
+!python/earmark/data/
+!tests/data/
+.ruff_cache/
+.mypy_cache/
+.coverage
+engine/build-*/
