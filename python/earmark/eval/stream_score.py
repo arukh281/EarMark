@@ -28,6 +28,7 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
 from earmark import constants as C
+from earmark.data.activity import frame_energy_from_frames
 from earmark.eval import metrics as M
 from earmark.eval.bargein import BargeInCounts, binarize, pool_counts, score_bargein
 from earmark.eval.bootstrap import DEFAULT_RESAMPLES, bootstrap_mean
@@ -403,7 +404,8 @@ class StreamingScorer:
         t = M.num_frames(bufs["r"].size)
         if t:
             frames = {k: M.frame_signal(b)[:t] for k, b in bufs.items()}
-            energy = {k: np.einsum("ij,ij->i", f, f) for k, f in frames.items()}
+            # The contract's windowed frame energy, the same code path as metrics.frame_energy.
+            energy = {k: frame_energy_from_frames(f) for k, f in frames.items()}
             self._frames["er"].append(energy["r"])
             self._frames["ee"].append(energy["e"])
             if has_mix:

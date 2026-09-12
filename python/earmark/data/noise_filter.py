@@ -61,7 +61,6 @@ EXCLUDED_TERMS: tuple[str, ...] = (
     "aircraft",
     "airplane",
     "helicopter",
-    "drone",
     "propeller",
     "engine",
     "chainsaw",

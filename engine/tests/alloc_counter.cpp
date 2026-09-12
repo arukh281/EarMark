@@ -65,7 +65,14 @@ void backend_stop() { malloc_logger = nullptr; }
 #elif defined(__GLIBC__)
 
 #include <cerrno>
+#include <cstdint>
 #include <stdlib.h>
+#include <unistd.h>
+
+namespace {
+// sysconf does not allocate, so it is safe inside the allocation hooks.
+std::size_t page_size() { return static_cast<std::size_t>(sysconf(_SC_PAGESIZE)); }
+}  // namespace
 
 // Definitions in the executable interpose glibc's for the whole process (ELF symbol
 // interposition); the __libc_* entry points are glibc's own implementations.
@@ -101,6 +108,31 @@ int posix_memalign(void** out, std::size_t alignment, std::size_t size) __THROW 
   if (block == nullptr) return ENOMEM;
   *out = block;
   return 0;
+}
+// glibc's own valloc, pvalloc and reallocarray call its internal allocator directly, so
+// they would bypass the definitions above; interpose them too.
+void* valloc(std::size_t size) __THROW {
+  note_allocation();
+  return __libc_memalign(page_size(), size);
+}
+void* pvalloc(std::size_t size) __THROW {
+  note_allocation();
+  const std::size_t page = page_size();
+  if (size > SIZE_MAX - page) {
+    errno = ENOMEM;
+    return nullptr;
+  }
+  const std::size_t rounded = size == 0 ? page : (size + page - 1) / page * page;
+  return __libc_memalign(page, rounded);
+}
+void* reallocarray(void* ptr, std::size_t count, std::size_t size) __THROW {
+  note_allocation();
+  std::size_t bytes = 0;
+  if (__builtin_mul_overflow(count, size, &bytes)) {
+    errno = ENOMEM;
+    return nullptr;
+  }
+  return __libc_realloc(ptr, bytes);
 }
 }  // extern "C"
 

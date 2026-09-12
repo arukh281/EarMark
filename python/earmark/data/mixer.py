@@ -27,6 +27,11 @@ mean power. In target-absent examples the drawn target level still sets the nois
 interferer levels. If the mixture would exceed ``max_peak`` every signal is scaled down
 together, so the drawn SNR and SIR still hold.
 
+Clipping (probability ``p_clip``) comes last and acts on ``mixture`` alone. In a clipped
+example (``clipped`` True) the mixture no longer equals the sum of its components, so
+``snr_db`` and ``sir_db`` are the levels *before* clipping. In every other example
+``mixture`` is exactly ``target_mix + interferer_mix + noise_mix``.
+
 Determinism. All random choices come from a NumPy generator seeded by
 ``(seed, batch_index)`` on the CPU; the device does only arithmetic. Batch ``k`` is a pure
 function of the pools, the config, the seed and ``k``, so resuming needs only

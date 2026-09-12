@@ -19,7 +19,7 @@ import torch
 from earmark import constants as C
 from earmark.data.agent_voice import split_voices
 from earmark.data.embeddings import StubSpeakerEncoder, compute_speaker_embeddings
-from earmark.data.labels import active_power, num_frames, vad_labels
+from earmark.data.labels import active_power, active_power_np, num_frames, vad_labels
 from earmark.data.mixer import (
     INTERFERER_AGENT,
     INTERFERER_HUMAN,
@@ -165,29 +165,56 @@ def test_prefetching_iterator_yields_the_same_batches(corpora: Corpora) -> None:
 
 @pytest.mark.parametrize("seed", [0, 1, 2, 3])
 def test_snr_and_sir_within_a_tenth_of_a_db(corpora: Corpora, seed: int) -> None:
-    """Property: drawn SNR and SIR hold to 0.1 dB in every example, as mixed."""
+    """Property: the drawn SNR and SIR hold to 0.1 dB in the mixture the model sees.
+
+    In an unclipped example the mixture must equal the sum of the returned components, and
+    the levels are measured on those components with the float64 NumPy active power
+    (``active_power_np``), not the torch function the mixer itself uses. A clipped example
+    must differ from its component sum; its ``snr_db`` and ``sir_db`` are pre-clipping
+    values (see the mixer docstring), so only its components are checked.
+    """
     batch = make_mixer(corpora, seed=seed).batch(0)
     for i in range(B):
-        target = batch["target_mix"][i].double()
-        noise = batch["noise_mix"][i].double()
-        interferer = batch["interferer_mix"][i].double()
+        parts = [batch[key][i] for key in ("target_mix", "interferer_mix", "noise_mix")]
+        summed = parts[0] + parts[1] + parts[2]
+        if bool(batch["clipped"][i]):
+            assert float((batch["mixture"][i] - summed).abs().max()) > 1e-4
+        else:
+            torch.testing.assert_close(batch["mixture"][i], summed, atol=1e-6, rtol=0)
+        target, interferer, noise = (p.double().numpy() for p in parts)
         gain_db = 20.0 * math.log10(float(batch["output_gain"][i]))
         level = float(batch["target_level_db"][i]) + gain_db
         snr = float(batch["snr_db"][i])
         sir = float(batch["sir_db"][i])
-        p_noise = noise.square().mean()
+        p_noise = float(np.mean(noise * noise))
         has_interferer = int(batch["interferer_kind"][i]) != INTERFERER_NONE
         if bool(batch["target_present"][i]):
-            p_target = active_power(target)
+            p_target = float(active_power_np(target))
             assert abs(db(p_target) - level) < 0.1
             assert abs(db(p_target / p_noise) - snr) < 0.1
             if has_interferer:
-                assert abs(db(p_target / active_power(interferer)) - sir) < 0.1
+                assert abs(db(p_target / float(active_power_np(interferer))) - sir) < 0.1
         else:
-            assert float(target.abs().max()) == 0.0
+            assert float(np.abs(target).max()) == 0.0
             assert abs(db(p_noise) - (level - snr)) < 0.1
             if has_interferer:
-                assert abs(db(active_power(interferer)) - (level - sir)) < 0.1
+                assert abs(db(float(active_power_np(interferer))) - (level - sir)) < 0.1
+
+
+def test_only_clipping_separates_the_mixture_from_its_components(corpora: Corpora) -> None:
+    """Both branches of the property above, forced: every example clipped, then none."""
+    clipped = make_mixer(corpora, seed=6, p_clip=1.0).batch(0)
+    unclipped = make_mixer(corpora, seed=6, p_clip=0.0).batch(0)
+    assert bool(clipped["clipped"].all()) and not bool(unclipped["clipped"].any())
+    peak_limit = MixerConfig().max_peak + 1e-6
+    for batch, clip in ((clipped, True), (unclipped, False)):
+        summed = batch["target_mix"] + batch["interferer_mix"] + batch["noise_mix"]
+        err = (batch["mixture"] - summed).abs().amax(-1)
+        if clip:
+            assert bool((err > 1e-4).all())
+        else:
+            assert float(err.max()) <= 1e-6
+        assert bool((batch["mixture"].abs().amax(-1) <= peak_limit).all())
 
 
 def test_target_absent_examples(corpora: Corpora) -> None:

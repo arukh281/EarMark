@@ -4,38 +4,58 @@
 PYTHON ?= .venv/bin/python
 CMAKE ?= $(if $(wildcard .venv/bin/cmake),.venv/bin/cmake,cmake)
 CTEST ?= $(if $(wildcard .venv/bin/ctest),.venv/bin/ctest,ctest)
-NINJA ?= $(if $(wildcard .venv/bin/ninja),$(abspath .venv/bin/ninja),ninja)
+# CMAKE_MAKE_PROGRAM must be a path, so resolve a PATH ninja to its absolute location.
+NINJA ?= $(if $(wildcard .venv/bin/ninja),$(abspath .venv/bin/ninja),$(or $(shell command -v ninja 2>/dev/null),ninja))
+NODE ?= node
 
 ENGINE_DIR ?= engine
 ENGINE_BUILD_DIR ?= engine/build
 ENGINE_BUILD_TYPE ?= RelWithDebInfo
 ENGINE_CMAKE_ARGS ?=
+# Sanitizer build (Linux CI; the macOS 26 ASan runtime hangs before main, so on a Mac
+# use `make engine-sanitize SANITIZERS=-DEARMARK_UBSAN=ON`).
+SANITIZE_BUILD_DIR ?= engine/build-asan
+SANITIZERS ?= -DEARMARK_ASAN=ON -DEARMARK_UBSAN=ON
+WASM_OUT_DIR ?= engine/build-wasm
 
-# Module run by `make eval-dev` once the PyTorch-stream dev runner exists.
+# PyTorch-stream dev runner (python/earmark/eval/dev_runner.py).
 DEV_RUNNER ?= earmark.eval.dev_runner
-DEV_RUNNER_FILE = python/$(subst .,/,$(DEV_RUNNER)).py
 EVAL_ARGS ?=
+# Groups of scripts/fetch_eval_data.sh that the gates need.
+GATE_ASSETS ?= vbd gtcrn
 
 PYTEST_ARGS ?=
 CACHE_DIRS = .cache/huggingface .cache/torch .cache/uv .cache/pip .cache/npm .cache/ms-playwright
 
-.PHONY: help test gates codegen contract-check engine eval-dev disk-guard clean-caches
+.PHONY: help test gates fetch-eval-data codegen contract-check goldens goldens-check \
+	engine engine-sanitize wasm eval-dev disk-guard clean-caches
 
 help:
-	@echo "make test            CPU unit tests (excludes the slow and gate markers)"
-	@echo "make gates           acceptance gates (needs fetched eval data)"
-	@echo "make codegen         regenerate constants from contract/signal.yaml"
-	@echo "make contract-check  fail if the generated constants are stale"
-	@echo "make engine          configure, build and ctest the C++ engine (Ninja)"
-	@echo "make eval-dev        score the dev split with the PyTorch-stream runner"
-	@echo "make disk-guard      fail when less than 5 GiB is free"
-	@echo "make clean-caches    delete ./.cache downloads and Python caches"
+	@echo "make test              CPU unit tests (excludes the slow and gate markers)"
+	@echo "make gates             Suite B reproduction gates (fetches VB-DEMAND + GTCRN first)"
+	@echo "make fetch-eval-data   download and sha256-verify the evaluation assets"
+	@echo "make codegen           regenerate constants from contract/signal.yaml"
+	@echo "make contract-check    fail if the generated constants are stale"
+	@echo "make goldens           regenerate the engine golden tensors"
+	@echo "make goldens-check     fail if the committed goldens are stale"
+	@echo "make engine            configure, build and ctest the C++ engine (Ninja)"
+	@echo "make engine-sanitize   the same under ASan + UBSan (Linux; see SANITIZERS)"
+	@echo "make wasm              build earmark.wasm with emcc and smoke-test it in node (CI)"
+	@echo "make eval-dev EVAL_ARGS=\"--config M --checkpoint CKPT --manifest DEV/manifest.parquet ...\""
+	@echo "                       score Earmark-Synth dev with the PyTorch-stream runner"
+	@echo "make disk-guard        fail when less than 5 GiB is free"
+	@echo "make clean-caches      delete ./.cache downloads and Python caches"
 
 test:
 	CUDA_VISIBLE_DEVICES= $(PYTHON) -m pytest -q -m "not slow and not gate" $(PYTEST_ARGS)
 
-gates:
+# The gate tests fail (never skip) when their data is missing, so fetch it first.
+# The fetch is cheap when the files are already present and verified.
+gates: fetch-eval-data
 	$(PYTHON) -m pytest -q -m gate $(PYTEST_ARGS)
+
+fetch-eval-data:
+	scripts/fetch_eval_data.sh $(GATE_ASSETS)
 
 codegen:
 	$(PYTHON) contract/codegen.py
@@ -43,14 +63,35 @@ codegen:
 contract-check:
 	$(PYTHON) contract/codegen.py --check
 
+goldens:
+	PYTHONPATH=python $(PYTHON) -m earmark.export.golden
+
+goldens-check:
+	PYTHONPATH=python $(PYTHON) -m earmark.export.golden --check
+
 engine:
-	@test -f $(ENGINE_DIR)/CMakeLists.txt || { echo "make engine: $(ENGINE_DIR)/CMakeLists.txt does not exist yet" >&2; exit 1; }
 	$(CMAKE) -S $(ENGINE_DIR) -B $(ENGINE_BUILD_DIR) -G Ninja -DCMAKE_MAKE_PROGRAM=$(NINJA) -DCMAKE_BUILD_TYPE=$(ENGINE_BUILD_TYPE) -DCMAKE_EXPORT_COMPILE_COMMANDS=ON $(ENGINE_CMAKE_ARGS)
 	$(CMAKE) --build $(ENGINE_BUILD_DIR)
 	$(CTEST) --test-dir $(ENGINE_BUILD_DIR) --output-on-failure
 
-eval-dev: disk-guard
-	@test -f $(DEV_RUNNER_FILE) || { echo "make eval-dev: $(DEV_RUNNER_FILE) does not exist yet (placeholder target)" >&2; exit 1; }
+engine-sanitize:
+	$(CMAKE) -S $(ENGINE_DIR) -B $(SANITIZE_BUILD_DIR) -G Ninja -DCMAKE_MAKE_PROGRAM=$(NINJA) -DCMAKE_BUILD_TYPE=Debug -DEARMARK_BUILD_SHARED=OFF $(SANITIZERS) $(ENGINE_CMAKE_ARGS)
+	$(CMAKE) --build $(SANITIZE_BUILD_DIR)
+	$(CTEST) --test-dir $(SANITIZE_BUILD_DIR) --output-on-failure
+
+wasm:
+	$(ENGINE_DIR)/wasm/build.sh $(WASM_OUT_DIR)
+	$(NODE) $(ENGINE_DIR)/wasm/smoke.mjs $(WASM_OUT_DIR)/earmark.wasm
+
+# The runner refuses mislabelled runs (random weights outside --split smoke, a test split
+# without a frozen threshold, ...) and exits 2; see `--help` for every option.
+eval-dev:
+	@if [ -z "$(strip $(EVAL_ARGS))" ]; then \
+	  echo 'usage: make eval-dev EVAL_ARGS="--config M --checkpoint CKPT --manifest DEV/manifest.parquet [--embeddings EMB.npz] [--check]"' >&2; \
+	  echo '       make eval-dev EVAL_ARGS=--help   lists every option' >&2; \
+	  exit 2; \
+	fi
+	@scripts/disk_guard.sh
 	PYTHONPATH=python $(PYTHON) -m $(DEV_RUNNER) $(EVAL_ARGS)
 
 disk-guard:

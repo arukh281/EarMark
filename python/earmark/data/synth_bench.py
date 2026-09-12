@@ -23,6 +23,7 @@ SNR and SIR, a direct-path-plus-50 ms reference, and contract VAD labels.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 from collections import Counter
@@ -59,8 +60,8 @@ from earmark.data.mixer import (
     soft_clip,
     synthetic_rir,
 )
-from earmark.data.shards import POOL_ENROL, POOL_TARGET, ShardedCorpus
-from earmark.data.splits import SplitLeakError, check_speaker_disjoint
+from earmark.data.shards import MANIFEST_NAME, POOL_ENROL, POOL_TARGET, ShardedCorpus
+from earmark.data.splits import SplitLeakError, check_speaker_disjoint, load_speaker_list
 
 __all__ = [
     "COND_AGENT",
@@ -193,6 +194,11 @@ class MixtureSpec:
     snr_db: float | None = None
     codec: str | None = None
     reference_clean: bool = True
+    #: Every chapter/session group of the enrolment utterances and of the target segments
+    #: (``enrol_group`` / ``target_group`` keep only the first of each). Enrolment built
+    #: from several whole groups, or a target made of two utterances, is checked in full.
+    enrol_groups: tuple[str, ...] = ()
+    target_groups: tuple[str, ...] = ()
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), sort_keys=True)
@@ -203,6 +209,8 @@ class MixtureSpec:
         d["target_segments"] = tuple(SourceRef(**s) for s in d["target_segments"])
         d["interferer"] = tuple(SourceRef(**s) for s in d["interferer"])
         d["enrol_utts"] = tuple(d["enrol_utts"])
+        d["enrol_groups"] = tuple(d.get("enrol_groups", ()))
+        d["target_groups"] = tuple(d.get("target_groups", ()))
         for key in ("music", "noise"):
             if d.get(key) is not None:
                 d[key] = SourceRef(**d[key])
@@ -403,6 +411,7 @@ class _Designer:
             if acc >= d.enrol_seconds:
                 break
         enrol_group = str(self.t_group[enrol[0]])
+        enrol_groups = tuple(sorted({str(self.t_group[r]) for r in enrol[: len(enrol_utts)]}))
         present = cond != COND_INTERFERER_ONLY
         segments: tuple[SourceRef, ...] = ()
         if cond == COND_LONG_ABSENCE:
@@ -413,6 +422,9 @@ class _Designer:
             segments = (self._ref("targets", row, int(rng.integers(n - length + 1)), dst, length),)
         elif present:
             segments = self._layout("targets", self.target_rows[spk], rng)
+        target_groups = tuple(
+            sorted({str(self.t_group[self.pools.row("targets", seg.utt_id)]) for seg in segments})
+        )
         target_group = str(self.t_group[self.pools.row("targets", segments[0].utt_id)]) if segments else ""
         level = float(rng.uniform(*d.target_level_db))
         snr: float | None = float(rng.choice(d.snr_grid))
@@ -498,6 +510,8 @@ class _Designer:
             snr_db=None if snr is None else float(snr),
             codec=codec,
             reference_clean=cond != COND_SVARAH,
+            enrol_groups=enrol_groups,
+            target_groups=target_groups,
         )
 
 
@@ -508,23 +522,25 @@ def design_suite(
     design: SuiteDesign = SuiteDesign(),
     seed: int = 0,
     chain: MixerConfig = MixerConfig(),
-    train_speakers: Iterable[str] | None = None,
+    train_speakers: Iterable[str],
 ) -> list[MixtureSpec]:
     """Draw the specs of one split. Mixture ``i`` depends only on ``(seed, i)`` and its
     condition, so the same seed gives the same manifest.
 
-    ``train_speakers`` (namespaced) makes the call fail if any target, interferer or agent
-    speaker also appears in training.
+    ``train_speakers`` (namespaced keys, required and non-empty; see
+    :func:`load_training_speakers`) makes the call fail with :class:`SplitLeakError` if any
+    target, interferer or agent speaker the pools offer also appears in training. The drawn
+    specs are then checked again with :func:`check_manifest_disjoint`.
     """
+    train = _training_speaker_set(train_speakers)
     designer = _Designer(pools, design, chain, split, seed)
-    if train_speakers is not None:
-        held = {
-            "benchmark targets": set(designer.speakers),
-            "benchmark interferers": set(designer.i_spk.tolist()),
-        }
-        if pools.agent is not None:
-            held["benchmark agent voices"] = set(pools.agent.speaker.astype(str).tolist())
-        check_speaker_disjoint(train_speakers, held)
+    held = {
+        "benchmark targets": set(designer.speakers),
+        "benchmark interferers": set(designer.i_spk.tolist()),
+    }
+    if pools.agent is not None:
+        held["benchmark agent voices"] = set(pools.agent.speaker.astype(str).tolist())
+    check_speaker_disjoint(train, held)
     conditions = allocate_conditions(design.n_mixtures, design.fractions)
     order = np.random.default_rng([seed, 1]).permutation(len(conditions))
     counters: Counter[str] = Counter()
@@ -533,16 +549,90 @@ def design_suite(
         cond = conditions[j]
         specs.append(designer.one(i, cond, counters[cond], np.random.default_rng([seed, 2, i])))
         counters[cond] += 1
+    check_manifest_disjoint(specs, train)
     return specs
 
 
+def _training_speaker_set(train_speakers: Iterable[str]) -> frozenset[str]:
+    if isinstance(train_speakers, str):
+        raise TypeError("train_speakers is a collection of speaker keys, not one string")
+    train = frozenset(str(s) for s in train_speakers)
+    if not train:
+        raise ValueError(
+            "train_speakers is empty, so the leak check would pass vacuously; pass the training "
+            "speakers (earmark.data.synth_bench.load_training_speakers)"
+        )
+    return train
+
+
+def _spec_groups(spec: MixtureSpec) -> tuple[set[str], set[str]]:
+    """Every enrolment group and every target group of a spec (older specs: the first of each)."""
+    enrol = set(spec.enrol_groups) or {spec.enrol_group}
+    target = set(spec.target_groups) or ({spec.target_group} if spec.target_group else set())
+    return enrol, target
+
+
 def check_manifest_disjoint(specs: Sequence[MixtureSpec], train_speakers: Iterable[str]) -> None:
-    """Raise :class:`SplitLeakError` if a manifest uses any training speaker."""
+    """Raise :class:`SplitLeakError` if a manifest uses any training speaker, or if any
+    mixture's enrolment shares a chapter/session group with its target segments.
+
+    Every group is checked: all the enrolment utterances' groups (enrolment may span several
+    whole groups) against all the target segments' groups.
+    """
+    train = _training_speaker_set(train_speakers)
     used = {s.target_speaker for s in specs} | {s.interferer_speaker for s in specs if s.interferer_speaker}
-    check_speaker_disjoint(train_speakers, {"benchmark manifest": used})
+    check_speaker_disjoint(train, {"benchmark manifest": used})
     for s in specs:
-        if s.target_present and s.enrol_group == s.target_group:
-            raise SplitLeakError(f"{s.mixture_id}: enrolment and target share group {s.target_group}")
+        if not s.target_present:
+            continue
+        enrol, target = _spec_groups(s)
+        shared = sorted(enrol & target)
+        if shared:
+            raise SplitLeakError(f"{s.mixture_id}: enrolment and target share groups {shared}")
+
+
+def load_training_speakers(*paths: str | Path) -> frozenset[str]:
+    """The training speakers named by ``paths`` (the union), for the benchmark leak checks.
+
+    Each path is one of:
+
+    * a speaker-list JSON (:func:`earmark.data.splits.save_speaker_list` format, or a bare
+      JSON list of namespaced keys);
+    * a prepared dataset's ``manifest.parquet`` (its ``speaker`` column);
+    * a folder, searched recursively for ``manifest.parquet`` files.
+
+    The training datasets' manifests are small, so they can be fetched on their own, e.g.
+    ``kaggle datasets download <user>/earmark-speech-16k -f clean100_16k/manifest.parquet``.
+    """
+    speakers: set[str] = set()
+    for raw in paths:
+        path = Path(raw).expanduser()
+        if path.is_dir():
+            files = sorted(path.rglob(MANIFEST_NAME))
+            if not files:
+                raise FileNotFoundError(f"no {MANIFEST_NAME} under {path}")
+        elif path.is_file():
+            files = [path]
+        else:
+            raise FileNotFoundError(f"no such speaker list or manifest: {path}")
+        for file in files:
+            if file.suffix == ".json":
+                speakers |= load_speaker_list(file)
+            else:
+                column = pq.read_table(file, columns=["speaker"]).column("speaker")
+                speakers |= {str(s) for s in column.to_pylist()}
+    return _training_speaker_set(speakers)
+
+
+def _speaker_digest(speakers: Iterable[str]) -> str:
+    return hashlib.sha256("\n".join(sorted(speakers)).encode("utf-8")).hexdigest()
+
+
+def read_leak_check(path: str | Path) -> dict[str, Any] | None:
+    """The leak-check record :func:`write_manifest` stored in a manifest, or ``None``."""
+    metadata = pq.read_schema(Path(path)).metadata or {}
+    raw = metadata.get(LEAK_CHECK_KEY)
+    return None if raw is None else json.loads(raw.decode("utf-8"))
 
 
 def summarize(specs: Sequence[MixtureSpec]) -> dict[str, Any]:
@@ -557,8 +647,16 @@ def summarize(specs: Sequence[MixtureSpec]) -> dict[str, Any]:
     }
 
 
-def write_manifest(specs: Sequence[MixtureSpec], path: str | Path) -> Path:
-    """Parquet manifest: flat columns for filtering plus the full ``spec_json``."""
+def write_manifest(specs: Sequence[MixtureSpec], path: str | Path, *, train_speakers: Iterable[str]) -> Path:
+    """Parquet manifest: flat columns for filtering plus the full ``spec_json``.
+
+    The specs are first checked against ``train_speakers`` (:func:`check_manifest_disjoint`,
+    required: no manifest is written unchecked). The check is recorded in the file's
+    metadata (:func:`read_leak_check`: speaker count and SHA-256 of the sorted list), and
+    the dev runner's ``--check`` refuses a manifest without it.
+    """
+    train = _training_speaker_set(train_speakers)
+    check_manifest_disjoint(specs, train)
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     rows = {

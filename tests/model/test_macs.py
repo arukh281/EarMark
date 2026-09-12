@@ -32,11 +32,22 @@ def test_ssm_macs_match_gru() -> None:
     assert abs(ssm.macs_per_frame / gru.macs_per_frame - 1) <= TOLERANCE
 
 
-def test_gru_body_count_matches_formula() -> None:
-    report = _report("S-GRU")
-    hidden = 128
-    per_layer = 3 * hidden * (hidden + hidden) + 3 * hidden
-    assert report.macs_by_part["body"] == 2 * per_layer
+@pytest.mark.parametrize("name", ["S-GRU", "M"])
+def test_gru_body_count_matches_the_layer_weights(name: str) -> None:
+    """Independent of the counter's formula: one multiply-add per GRU weight element, read
+    off the model's real ``weight_ih_l*`` / ``weight_hh_l*`` tensors, plus the ``3 H``
+    element-wise gate products of each layer."""
+    torch.manual_seed(0)
+    net = build(name)
+    grus = [m for m in net.body.modules() if isinstance(m, torch.nn.GRU)]
+    assert grus, f"{name} has no nn.GRU in its body"
+    expected = 0
+    for gru in grus:
+        for layer in range(gru.num_layers):
+            expected += getattr(gru, f"weight_ih_l{layer}").numel()
+            expected += getattr(gru, f"weight_hh_l{layer}").numel()
+            expected += 3 * gru.hidden_size
+    assert complexity(net).macs_by_part["body"] == expected
 
 
 def test_every_per_frame_part_is_counted() -> None:

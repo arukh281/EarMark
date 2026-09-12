@@ -31,6 +31,10 @@ from numpy.typing import ArrayLike, NDArray
 
 from earmark import constants as C
 
+# Imported from earmark.data.activity (torch-free) and never from earmark.data.labels (which
+# imports torch), so that scoring workers keep the fast, torch-free start promised above.
+from earmark.data.activity import activity_from_energy_np, frame_energy_np
+
 __all__ = [
     "TSOS_COMPRESSION",
     "TSOS_GAMMA",
@@ -111,17 +115,13 @@ def frame_signal(x: ArrayLike, frame_length: int = C.WINDOW_LENGTH, hop: int = C
 
 
 def frame_energy(x: ArrayLike) -> FloatArray:
-    """Rectangular energy (sum of squares) of each contract frame."""
-    frames = frame_signal(x)
-    return np.einsum("ij,ij->i", frames, frames)
+    """Windowed energy ``sum((w * x) ** 2)`` of each contract frame (periodic sqrt-Hann ``w``).
 
-
-def _hangover(active: BoolArray, hangover_frames: int) -> BoolArray:
-    """Keep each active frame's label on for ``hangover_frames`` more frames (causal)."""
-    if hangover_frames <= 0 or active.size == 0:
-        return active.copy()
-    kernel = np.ones(hangover_frames + 1, dtype=np.int64)
-    return np.convolve(active.astype(np.int64), kernel)[: active.size] > 0
+    This is the contract's single activity-energy definition
+    (:func:`earmark.data.activity.frame_energy_np`), so TSOS target-present frames and
+    interferer-only regions use exactly the frames the VAD labels use.
+    """
+    return frame_energy_np(_as_1d(x, "signal"))
 
 
 def activity_from_energy(
@@ -131,15 +131,14 @@ def activity_from_energy(
 ) -> BoolArray:
     """Activity labels from per-frame energies, relative to the loudest frame.
 
-    A frame is active when ``10 log10(E_t / max_t E_t) > threshold_db`` (the contract uses
+    A frame is active when ``E_t > max_t E_t * 10 ** (threshold_db / 10)`` (the contract uses
     -40 dB relative to the utterance peak), then the label is held for ``hangover_frames``
-    frames after every active frame. An all-silent signal has no active frames.
+    frames after every active frame. An all-silent signal has no active frames. This is the
+    VAD-label rule itself (:func:`earmark.data.activity.activity_from_energy_np`).
     """
-    e = np.asarray(energy, dtype=np.float64)
-    if e.size == 0 or float(e.max()) <= 0.0:
-        return np.zeros(e.shape, dtype=bool)
-    level_db = 10.0 * np.log10(np.maximum(e, 1e-300) / float(e.max()))
-    return _hangover(level_db > threshold_db, hangover_frames)
+    return activity_from_energy_np(
+        np.asarray(energy, dtype=np.float64), threshold_db=threshold_db, hangover_frames=hangover_frames
+    )
 
 
 def activity_mask(
@@ -147,7 +146,10 @@ def activity_mask(
     threshold_db: float = C.VAD_THRESHOLD_DB,
     hangover_frames: int = C.VAD_HANGOVER_FRAMES,
 ) -> BoolArray:
-    """Contract-style activity labels (one per frame) from a clean or direct-path signal."""
+    """Contract activity labels (one per frame) from a clean or direct-path signal.
+
+    Identical to :func:`earmark.data.labels.vad_labels_np` with the signal's own peak.
+    """
     return activity_from_energy(frame_energy(signal), threshold_db, hangover_frames)
 
 

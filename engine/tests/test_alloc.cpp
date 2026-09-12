@@ -18,18 +18,54 @@ void* volatile g_sink = nullptr;
 constexpr double kPi = 3.14159265358979323846;
 }  // namespace
 
-TEST_CASE("the allocation counter sees malloc and operator new", "[alloc]") {
+TEST_CASE("the allocation counter sees every allocation entry point, once each", "[alloc]") {
   INFO("backend " << earmark_test::alloc_counter_backend());
   std::printf("  allocation counter backend: %s\n", earmark_test::alloc_counter_backend());
+  uint64_t c_calls = 0;  // C allocation calls made below (each must count exactly once)
   earmark_test::alloc_counter_start();
   void* block = std::malloc(48);
   g_sink = block;
+  ++c_calls;
+  void* zeroed = std::calloc(3, 16);
+  g_sink = zeroed;
+  ++c_calls;
+  block = std::realloc(block, 4096);  // grows, so it cannot stay in place
+  g_sink = block;
+  ++c_calls;
+  void* aligned = nullptr;
+  const int memalign_status = posix_memalign(&aligned, 64, 256);
+  g_sink = aligned;
+  ++c_calls;
+  void* aligned_c11 = aligned_alloc(64, 256);
+  g_sink = aligned_c11;
+  ++c_calls;
+#if defined(__GLIBC__)
+  void* paged = valloc(100);
+  g_sink = paged;
+  ++c_calls;
+  void* paged_rounded = pvalloc(100);
+  g_sink = paged_rounded;
+  ++c_calls;
+  void* array_c = reallocarray(nullptr, 4, 8);
+  g_sink = array_c;
+  ++c_calls;
+#endif
   int* array = new int[9];
   g_sink = array;
   const uint64_t count = earmark_test::alloc_counter_stop();
   std::free(block);
+  std::free(zeroed);
+  std::free(aligned);
+  std::free(aligned_c11);
+#if defined(__GLIBC__)
+  std::free(paged);
+  std::free(paged_rounded);
+  std::free(array_c);
+#endif
   delete[] array;
-  REQUIRE(count >= (earmark_test::alloc_counter_sees_malloc() ? 2u : 1u));
+  REQUIRE(memalign_status == 0);
+  INFO("C allocation calls " << c_calls << " plus one operator new[]");
+  REQUIRE(count == (earmark_test::alloc_counter_sees_malloc() ? c_calls + 1 : 1u));
 
   earmark_test::alloc_counter_start();
   const uint64_t idle = earmark_test::alloc_counter_stop();

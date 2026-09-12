@@ -34,3 +34,14 @@ playwright-report/
 .mypy_cache/
 .coverage
 engine/build-*/
+
+# Run-book artefacts, wherever they land: converted notebooks (the jupytext .py files are
+# the source), enrolment embeddings, checkpoints, ONNX exports and scored audio.
+*.ipynb
+*.npz
+*.pt
+*.onnx
+/results/**/*.wav
+# Small fixtures a test needs may still be committed under tests/.
+!tests/**/*.npz
+!tests/**/*.wav

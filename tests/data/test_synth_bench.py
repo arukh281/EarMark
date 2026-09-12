@@ -40,6 +40,9 @@ from earmark.data.synth_bench import (
 from .conftest import Corpora, write_corpus
 
 SR = C.SAMPLE_RATE
+# A stand-in training split: non-empty (an empty set would make the leak guard vacuous) and
+# disjoint from every benchmark fixture speaker, so design_suite's guard runs without firing.
+TRAIN_SPEAKERS = {"libri:5000"}
 
 
 @pytest.fixture(scope="module")
@@ -84,10 +87,10 @@ def test_allocation_and_hypothesis_share() -> None:
 
 
 def test_design_is_seeded(bench: BenchPools) -> None:
-    a = design_suite(bench, split="dev", design=design(80), seed=0)
-    b = design_suite(bench, split="dev", design=design(80), seed=0)
+    a = design_suite(bench, split="dev", design=design(80), seed=0, train_speakers=TRAIN_SPEAKERS)
+    b = design_suite(bench, split="dev", design=design(80), seed=0, train_speakers=TRAIN_SPEAKERS)
     assert [s.to_json() for s in a] == [s.to_json() for s in b]
-    c = design_suite(bench, split="dev", design=design(80), seed=1)
+    c = design_suite(bench, split="dev", design=design(80), seed=1, train_speakers=TRAIN_SPEAKERS)
     assert [s.to_json() for s in a] != [s.to_json() for s in c]
     assert Counter(s.condition for s in a) == Counter(allocate_conditions(80, DEFAULT_FRACTIONS))
     info = summarize(a)
@@ -96,7 +99,7 @@ def test_design_is_seeded(bench: BenchPools) -> None:
 
 
 def test_enrolment_comes_from_another_chapter_and_speakers_stay_disjoint(bench: BenchPools) -> None:
-    specs = design_suite(bench, split="test", design=design(60), seed=2)
+    specs = design_suite(bench, split="test", design=design(60), seed=2, train_speakers=TRAIN_SPEAKERS)
     check_manifest_disjoint(specs, {"libri:5000"})
     speech = bench.targets
     ids = speech.column("utt_id").astype(str)
@@ -119,8 +122,8 @@ def test_enrolment_comes_from_another_chapter_and_speakers_stay_disjoint(bench: 
 
 
 def test_manifest_round_trip(bench: BenchPools, tmp_path: Path) -> None:
-    specs = design_suite(bench, split="dev", design=design(24), seed=4)
-    path = write_manifest(specs, tmp_path / "dev" / "manifest.parquet")
+    specs = design_suite(bench, split="dev", design=design(24), seed=4, train_speakers=TRAIN_SPEAKERS)
+    path = write_manifest(specs, tmp_path / "dev" / "manifest.parquet", train_speakers=TRAIN_SPEAKERS)
     assert [s.to_json() for s in read_manifest(path)] == [s.to_json() for s in specs]
     table = pq.read_table(path)
     assert set(table.column("contract_hash").to_pylist()) == {C.CONTRACT_HASH}
@@ -128,7 +131,7 @@ def test_manifest_round_trip(bench: BenchPools, tmp_path: Path) -> None:
 
 
 def test_rendered_mixtures_match_their_specs(bench: BenchPools) -> None:
-    specs = design_suite(bench, split="dev", design=design(40), seed=5)
+    specs = design_suite(bench, split="dev", design=design(40), seed=5, train_speakers=TRAIN_SPEAKERS)
     n_snr = n_sir = 0
     seen: set[str] = set()
     for spec in specs:
@@ -192,7 +195,8 @@ def test_load_bench_pools_keeps_only_held_out_voices_and_music(corpora: Corpora,
 
 @pytest.mark.skipif(not opus_available(), reason="ffmpeg with libopus is not available")
 def test_opus_condition_is_coded(bench: BenchPools) -> None:
-    specs = [s for s in design_suite(bench, split="dev", design=design(40), seed=5) if s.codec == "opus16k"]
+    suite = design_suite(bench, split="dev", design=design(40), seed=5, train_speakers=TRAIN_SPEAKERS)
+    specs = [s for s in suite if s.codec == "opus16k"]
     assert specs
     raw = render_mixture(specs[0], bench, apply_codec=False)["mixture"]
     coded = render_mixture(specs[0], bench, apply_codec=True)["mixture"]

@@ -17,7 +17,17 @@
 namespace earmark_test {
 
 /// Per-layer golden tolerance: max |got - want| <= kGoldenTol * max(1, peak |want|).
+///
+/// The bound is *peak-relative*, per checked block (usually one frame): where the peak is
+/// large (unscaled spectra, band powers reach tens to thousands) low-energy elements are
+/// only loosely constrained. Tensors with a wide dynamic range therefore also get an
+/// element-wise check in dB (require_close_db), e.g. the ERB band powers.
 inline constexpr double kGoldenTol = 1e-5;
+
+/// Element-wise level tolerance of require_close_db, in dB.
+inline constexpr double kGoldenDbTol = 1e-3;
+/// Power floor added before taking 10 log10 in require_close_db (exact zeros compare equal).
+inline constexpr double kGoldenDbFloor = 1e-20;
 
 /// Whole file as bytes (empty on failure).
 std::vector<uint8_t> read_file(const std::string& path);
@@ -58,6 +68,12 @@ ErrorStats compare(const float* got, const float* want, std::size_t n);
 /// REQUIREs max_abs <= rel_tol * max(1, peak), and prints one line with the result.
 ErrorStats require_close(const std::string& what, const float* got, const float* want, std::size_t n,
                          double rel_tol = kGoldenTol);
+
+/// CHECKs every element on its own: |10 log10(got + floor) - 10 log10(want + floor)| <= tol_db
+/// (negative or NaN values fail). For non-negative tensors with a wide dynamic range, such
+/// as band powers. Returns the worst error in dB.
+double require_close_db(const std::string& what, const float* got, const float* want, std::size_t n,
+                        double tol_db = kGoldenDbTol, double floor = kGoldenDbFloor);
 
 /// Prints an accumulated result line (for checks made frame by frame).
 void report(const std::string& what, const ErrorStats& stats, double rel_tol = kGoldenTol);

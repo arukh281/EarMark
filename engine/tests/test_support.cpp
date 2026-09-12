@@ -91,4 +91,25 @@ ErrorStats require_close(const std::string& what, const float* got, const float*
   return stats;
 }
 
+double require_close_db(const std::string& what, const float* got, const float* want, std::size_t n,
+                        double tol_db, double floor) {
+  double worst_db = 0.0;
+  std::size_t worst = 0;
+  for (std::size_t i = 0; i < n; ++i) {
+    const double g = static_cast<double>(got[i]);
+    const double w = static_cast<double>(want[i]);
+    const double err = (g < 0.0 || w < 0.0 || std::isnan(g)) ? INFINITY
+                                                             : std::fabs(10.0 * std::log10(g + floor) -
+                                                                         10.0 * std::log10(w + floor));
+    if (err > worst_db) {
+      worst_db = err;
+      worst = i;
+    }
+  }
+  INFO(what << " (dB, element-wise): worst index " << worst << " got " << (n ? got[worst] : 0.0f) << " want "
+            << (n ? want[worst] : 0.0f));
+  CHECK(worst_db <= tol_db);
+  return worst_db;
+}
+
 }  // namespace earmark_test

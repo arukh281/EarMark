@@ -15,12 +15,11 @@ if [ ! -e "$target" ]; then
   echo "disk_guard: no such path: $target" >&2
   exit 2
 fi
-case "$min_gb" in
-  '' | *[!0-9.]*)
-    echo "disk_guard: EARMARK_MIN_FREE_GB must be a number, got '$min_gb'" >&2
-    exit 2
-    ;;
-esac
+# Digits with an optional fractional part ("5", "0.5"); rejects "", ".", "1.2.3", "-1", "1e3".
+if ! printf '%s' "$min_gb" | grep -Eq '^[0-9]+([.][0-9]+)?$'; then
+  echo "disk_guard: EARMARK_MIN_FREE_GB must be a number of GiB, got '$min_gb'" >&2
+  exit 2
+fi
 
 # POSIX output: 1024-byte blocks, one line per filesystem; column 4 is "Available".
 avail_kb="$(df -Pk "$target" | awk 'NR == 2 { print $4 }')"

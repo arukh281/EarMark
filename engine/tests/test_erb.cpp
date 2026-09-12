@@ -1,3 +1,5 @@
+#include <algorithm>
+#include <cstdio>
 #include <cstring>
 #include <vector>
 
@@ -48,6 +50,7 @@ TEST_CASE("ERB power, features and unit norm match the golden", "[erb]") {
   earmark_test::ErrorStats feat_total;
   earmark_test::ErrorStats unit_total;
   earmark_test::ErrorStats gain_total;
+  double power_db_worst = 0.0;
   float ours_power[kBands];
   float ours_feat[kBands];
   float ours_unit[2 * kDfBins];
@@ -57,6 +60,10 @@ TEST_CASE("ERB power, features and unit norm match the golden", "[erb]") {
     const float* s = spec + t * kSpec;
     earmark::erb_band_power(s, ours_power);
     earmark_test::accumulate(power_total, earmark_test::require_close("erb.power" + frame, ours_power, power + t * kBands, kBands));
+    // The peak-relative bound above barely constrains bands far below the frame's peak, so
+    // every band is also checked on its own, in dB.
+    power_db_worst = std::max(power_db_worst, earmark_test::require_close_db("erb.power" + frame, ours_power,
+                                                                             power + t * kBands, kBands));
     earmark::erb_features_step(s, erb_norm, ours_feat);
     earmark_test::accumulate(feat_total, earmark_test::require_close("erb.feat" + frame, ours_feat, feat + t * kBands, kBands));
     earmark::unit_norm_step(s, spec_norm, ours_unit);
@@ -67,6 +74,8 @@ TEST_CASE("ERB power, features and unit norm match the golden", "[erb]") {
                                                                      gained + t * kSpec, kSpec));
   }
   earmark_test::report("erb.erb_power (per frame)", power_total);
+  std::printf("  %-34s max err %.3e dB (tol %.1e dB)\n", "erb.erb_power (per band, dB)", power_db_worst,
+              earmark_test::kGoldenDbTol);
   earmark_test::report("erb.erb_feat", feat_total);
   earmark_test::report("erb.spec_feat", unit_total);
   earmark_test::report("erb.gained_spec (per frame)", gain_total);
