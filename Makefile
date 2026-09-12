@@ -40,7 +40,7 @@ help:
 	@echo "make goldens-check     fail if the committed goldens are stale"
 	@echo "make engine            configure, build and ctest the C++ engine (Ninja)"
 	@echo "make engine-sanitize   the same under ASan + UBSan (Linux; see SANITIZERS)"
-	@echo "make wasm              build earmark.wasm with emcc and smoke-test it in node (CI)"
+	@echo "make wasm              build earmark.wasm with em++ and smoke-test it in node (CI)"
 	@echo "make eval-dev EVAL_ARGS=\"--config M --checkpoint CKPT --manifest DEV/manifest.parquet ...\""
 	@echo "                       score Earmark-Synth dev with the PyTorch-stream runner"
 	@echo "make disk-guard        fail when less than 5 GiB is free"

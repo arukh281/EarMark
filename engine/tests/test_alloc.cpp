@@ -5,6 +5,12 @@
 #include <string>
 #include <vector>
 
+// glibc declares pvalloc in <malloc.h>, not in <cstdlib>, so the __GLIBC__ block below
+// does not compile without it. __GLIBC__ itself comes from the libc headers above.
+#if defined(__GLIBC__)
+#include <malloc.h>
+#endif
+
 #include "alloc_counter.h"
 #include "arena.h"
 #include "catch_amalgamated.hpp"

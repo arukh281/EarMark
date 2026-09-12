@@ -24,11 +24,11 @@ out="${1:-${engine}/build-wasm}"
 memory="${EARMARK_WASM_MEMORY:-67108864}"
 stack="${EARMARK_WASM_STACK:-1048576}"
 
-if ! command -v emcc >/dev/null 2>&1; then
-  echo "build.sh: emcc not found. The WASM build runs in CI (setup-emsdk); build natively with CMake instead." >&2
+if ! command -v em++ >/dev/null 2>&1; then
+  echo "build.sh: em++ not found. The WASM build runs in CI (setup-emsdk); build natively with CMake instead." >&2
   exit 1
 fi
-emcc --version | head -n 1
+em++ --version | head -n 1
 
 mkdir -p "${out}/obj"
 
@@ -48,7 +48,7 @@ for name in "${sources[@]}"; do
   if [[ "${name}" != "fft" ]]; then
     flags+=(-fno-exceptions -fno-rtti)
   fi
-  emcc "${flags[@]}" -c "${engine}/src/${name}.cpp" -o "${out}/obj/${name}.o"
+  em++ "${flags[@]}" -c "${engine}/src/${name}.cpp" -o "${out}/obj/${name}.o"
   objects+=("${out}/obj/${name}.o")
 done
 
@@ -61,7 +61,7 @@ exports=(
 export_list="$(printf '_%s,' "${exports[@]}")"
 export_list="${export_list%,}"
 
-emcc "${objects[@]}" -O3 -msimd128 -o "${out}/earmark.wasm" \
+em++ "${objects[@]}" -O3 -msimd128 -o "${out}/earmark.wasm" \
   -sSTANDALONE_WASM=1 --no-entry \
   -sINITIAL_MEMORY="${memory}" -sALLOW_MEMORY_GROWTH=0 -sSTACK_SIZE="${stack}" \
   -sEXPORTED_FUNCTIONS="${export_list}" \
