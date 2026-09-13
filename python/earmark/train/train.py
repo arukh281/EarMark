@@ -296,10 +296,9 @@ class VerifyResult:
     reference: list[float] = field(default_factory=list, repr=False)
 
     def summary(self) -> dict[str, Any]:
-        data = asdict(self)
-        data.pop("losses")
-        data.pop("reference")
-        return data
+        # Keep the per-step losses: on a GPU they show whether a difference grows from zero
+        # (non-deterministic kernels) or is there from the first step (a restore bug).
+        return asdict(self)
 
 
 @dataclass

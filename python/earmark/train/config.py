@@ -70,8 +70,10 @@ class TrainConfig:
     max_steps: int | None = None
     #: Total training time across sessions, used when ``max_steps`` is ``None``.
     budget_hours: float | None = None
-    #: Session-relative steps between which throughput is measured.
-    calibrate_steps: tuple[int, int] = (50, 250)
+    #: Session-relative steps between which throughput is measured. The first few hundred
+    #: steps run slower while the data pipeline fills, so measuring earlier undercounts
+    #: throughput and ends the schedule early. The window ends inside every preset's warm-up.
+    calibrate_steps: tuple[int, int] = (300, 500)
     grad_clip: float = 1.0
     #: fp16 autocast plus GradScaler for the network body (CUDA only; DSP and losses stay fp32).
     amp: bool = True
@@ -157,7 +159,7 @@ class TrainConfig:
 PRESETS: Final[dict[str, TrainConfig]] = {
     "smoke": TrainConfig(
         name="smoke", model="M", budget_hours=0.9, time_limit_hours=1.0, checkpoint_minutes=10.0,
-        warmup_steps=300, calibrate_steps=(30, 150), log_every=25, val_every=500, val_batches=2,
+        warmup_steps=300, calibrate_steps=(200, 300), log_every=25, val_every=500, val_batches=2,
     ),
     "mini-full": TrainConfig(
         name="mini-full", model="M", use_agent_voice=False, budget_hours=1.9, time_limit_hours=2.0,
