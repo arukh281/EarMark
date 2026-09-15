@@ -1,0 +1,102 @@
+{
+  "format": "earmark-weights-blob",
+  "format_version": 1,
+  "contract_version": 1,
+  "contract_hash": "875b5abc86eafabb",
+  "blob_file": "weights_small.emwb",
+  "blob_bytes": 2816,
+  "blob_sha256": "e54843728ade22315a56e4567f9ae87862d846a55175ea6bb6b14fff2c1d5ada",
+  "blob_table_crc32": 1384446153,
+  "blob_data_crc32": 1247749484,
+  "created_by": "earmark.export.golden",
+  "random_weights": true,
+  "note": "engine test blob: every dtype and rank, no model weights",
+  "tensors": [
+    {
+      "name": "test.arange",
+      "dtype": "float32",
+      "shape": [
+        2,
+        3,
+        4
+      ],
+      "offset": 0,
+      "numel": 24,
+      "crc32": 4254705194
+    },
+    {
+      "name": "test.int",
+      "dtype": "int32",
+      "shape": [
+        2,
+        3
+      ],
+      "offset": 128,
+      "numel": 6,
+      "crc32": 1021485323
+    },
+    {
+      "name": "test.scalar",
+      "dtype": "float32",
+      "shape": [],
+      "offset": 192,
+      "numel": 1,
+      "crc32": 845542699
+    },
+    {
+      "name": "test.empty",
+      "dtype": "float32",
+      "shape": [
+        0
+      ],
+      "offset": 256,
+      "numel": 0,
+      "crc32": 0
+    },
+    {
+      "name": "test.rank6",
+      "dtype": "float32",
+      "shape": [
+        1,
+        2,
+        1,
+        3,
+        1,
+        2
+      ],
+      "offset": 256,
+      "numel": 12,
+      "crc32": 3083054751
+    },
+    {
+      "name": "conditioner.null_embedding",
+      "dtype": "float32",
+      "shape": [
+        256
+      ],
+      "offset": 320,
+      "numel": 256,
+      "crc32": 1641741653
+    },
+    {
+      "name": "const.erb_norm_init",
+      "dtype": "float32",
+      "shape": [
+        32
+      ],
+      "offset": 1344,
+      "numel": 32,
+      "crc32": 2574533678
+    },
+    {
+      "name": "const.spec_norm_init",
+      "dtype": "float32",
+      "shape": [
+        64
+      ],
+      "offset": 1472,
+      "numel": 64,
+      "crc32": 793466976
+    }
+  ]
+}

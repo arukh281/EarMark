@@ -1,0 +1,42 @@
+--- a/pocketfft_hdronly.h
++++ b/pocketfft_hdronly.hpp
+@@ -2411,9 +2411,17 @@
+     template<typename T> void exec(T c[], T0 fct, bool r2hc) const
+       {
+       if (length==1) { c[0]*=fct; return; }
+-      size_t nf=fact.size();
+       arr<T> ch(length);
+-      T *p1=c, *p2=ch.data();
++      exec(c, fct, r2hc, ch.data());
++      }
++
++    // EARMARK PATCH (engine/third_party/patches/pocketfft_noalloc.patch):
++    // allocation-free variant; `buf` is caller-owned scratch of length() elements.
++    template<typename T> void exec(T c[], T0 fct, bool r2hc, T *buf) const
++      {
++      if (length==1) { c[0]*=fct; return; }
++      size_t nf=fact.size();
++      T *p1=c, *p2=buf;
+ 
+       if (r2hc)
+         for(size_t k1=0, l1=length; k1<nf;++k1)
+@@ -2711,6 +2719,19 @@
+     template<typename T> POCKETFFT_NOINLINE void exec(T c[], T0 fct, bool fwd) const
+       { packplan ? packplan->exec(c,fct,fwd) : blueplan->exec_r(c,fct,fwd); }
+ 
++    // EARMARK PATCH (engine/third_party/patches/pocketfft_noalloc.patch):
++    // true when exec_noalloc() is available (packed plans; Bluestein plans allocate).
++    bool supports_noalloc() const { return static_cast<bool>(packplan); }
++
++    // EARMARK PATCH: allocation-free exec; `buf` is caller-owned scratch of length()
++    // elements. Returns false (and does nothing) for Bluestein plans.
++    template<typename T> bool exec_noalloc(T c[], T0 fct, bool fwd, T *buf) const
++      {
++      if (!packplan) return false;
++      packplan->exec(c,fct,fwd,buf);
++      return true;
++      }
++
+     size_t length() const { return len; }
+   };
+ 
