@@ -1,0 +1,296 @@
+{
+  "suite": "earmark-synth",
+  "runner": "earmark.eval.dev_runner",
+  "inference_path": "pytorch-stream",
+  "split": "dev",
+  "mode": "personal",
+  "created_utc": "2026-09-15T09:02:14+00:00",
+  "contract_hash": "875b5abc86eafabb",
+  "system": {
+    "name": "earmark-M-personal",
+    "inference_path": "pytorch-stream",
+    "params": 1984209,
+    "mmac_per_s": 196.6464,
+    "training_data": "Earmark training mix (docs/DATA_AND_LICENSES.md)",
+    "licence": "",
+    "notes": "PyTorch step() hop by hop, fp32; output latency-compensated by one hop"
+  },
+  "model": {
+    "config": "M",
+    "checkpoint": "/kaggle/tmp/eval/hf/models--alooo12--earmark-checkpoints/snapshots/33112abcb92cb15054eb576ccaabbb608ff26d9f/runs/mini-full/ckpt-000037175.pt",
+    "checkpoint_sha256": "853eaa748a3f62ab6dd6734a42d422c851d970b370baa960c65b1832d7d67ccd",
+    "random_weights": false,
+    "init_seed": null,
+    "state_bytes_per_stream": 6400
+  },
+  "manifest": {
+    "path": "/kaggle/working/eval/dev/manifest.parquet",
+    "sha256": "6e6a06ecc74ab8909114f065aa06738ed320449f67bde81235f1588020492d40",
+    "n_mixtures": 1500,
+    "n_selected": 1500,
+    "splits": [
+      "dev"
+    ],
+    "conditions": null,
+    "limit": null
+  },
+  "pools_file": "/kaggle/working/eval/dev/pools.yaml",
+  "embeddings": "wespeaker-voxceleb-resnet34-LM",
+  "stream": {
+    "batch": 8,
+    "chunk_hops": 50,
+    "device": "cuda"
+  },
+  "storage": "numbers only: enhanced audio is scored as it streams and never written",
+  "n_items": 1500,
+  "n_skipped": 0,
+  "skipped": [],
+  "n_speakers": 31,
+  "per_condition_counts": {
+    "agent_tts": 120,
+    "clean_control": 75,
+    "esc50_real_rir": 75,
+    "grid": 525,
+    "hyp_interferer_only": 188,
+    "hyp_long_absence": 187,
+    "hyp_sir0": 225,
+    "opus16k": 105
+  },
+  "metrics": {
+    "si_sdri": {
+      "n": 1237,
+      "n_missing": 263,
+      "mean": 5.168770658940615,
+      "ci95": [
+        4.916126408731383,
+        5.41347210834363
+      ],
+      "unit": "cluster",
+      "n_units": 31
+    },
+    "si_sdr": {
+      "n": 1312,
+      "n_missing": 188,
+      "mean": 5.923815065700798,
+      "ci95": [
+        5.509301237648171,
+        6.325903977004791
+      ],
+      "unit": "cluster",
+      "n_units": 31
+    },
+    "si_sdr_mixture": {
+      "n": 1237,
+      "n_missing": 263,
+      "mean": -0.6525892396294066,
+      "ci95": [
+        -0.900237750384591,
+        -0.4203981202366483
+      ],
+      "unit": "cluster",
+      "n_units": 31
+    },
+    "interferer_suppression_db": {
+      "n": 1227,
+      "n_missing": 273,
+      "mean": 13.778804681404761,
+      "ci95": [
+        12.78578953692087,
+        14.78119496432632
+      ],
+      "unit": "cluster",
+      "n_units": 31
+    }
+  },
+  "tsos_pooled_percent": {
+    "estimate": 3.1130638906171106,
+    "ci95": [
+      2.7035871084947045,
+      3.5241948881889438
+    ],
+    "n_items": 1312
+  },
+  "vad": {
+    "auc": 0.9073324880937116,
+    "ci95": [
+      0.8986764638641681,
+      0.9161048889473142
+    ],
+    "n_frames": 1198500,
+    "n_active_frames": 754809,
+    "n_items": 1500,
+    "n_units": 31,
+    "unit": "cluster",
+    "n_bins": 4096,
+    "n_invalid": 0
+  },
+  "bargein": {
+    "threshold": {
+      "source": "matched-on-this-run",
+      "threshold": 0.4430161416530609,
+      "level": "frame",
+      "target_recall": 0.95,
+      "achieved_recall": 0.950000596177311,
+      "n_positives": 754809,
+      "split": "dev"
+    },
+    "false_barge_ins_per_min": 4.097446195663198,
+    "onset_recall": 0.5682119205298013,
+    "frame_recall": 0.950000596177311,
+    "median_onset_delay_ms": 220.0,
+    "reference_onsets": 2265,
+    "detected_onsets": 1764,
+    "hits": 1287,
+    "false_barge_ins": 303,
+    "silent_minutes": 73.9485,
+    "active_frames": 754809,
+    "detected_active_frames": 717069,
+    "ci95": {
+      "false_barge_ins_per_min": {
+        "estimate": 4.097446195663198,
+        "ci95": [
+          3.6392878764983987,
+          4.598953161370322
+        ],
+        "n_units": 31,
+        "n_invalid": 0
+      },
+      "onset_recall": {
+        "estimate": 0.5682119205298013,
+        "ci95": [
+          0.5409830591360962,
+          0.595345292281274
+        ],
+        "n_units": 31,
+        "n_invalid": 0
+      },
+      "frame_recall": {
+        "estimate": 0.950000596177311,
+        "ci95": [
+          0.9433912052907794,
+          0.956550285371658
+        ],
+        "n_units": 31,
+        "n_invalid": 0
+      }
+    }
+  },
+  "by_condition": {
+    "agent_tts": {
+      "n": 120,
+      "n_target_present": 120,
+      "si_sdri": 5.023733216324795,
+      "si_sdr": 5.117876821371764,
+      "vad_auc": 0.945896854118786,
+      "false_barge_ins_per_min": 3.109613889608707,
+      "onset_recall": 0.5462184873949579,
+      "frame_recall": 0.9625252986877326,
+      "median_onset_delay_ms": 220.0
+    },
+    "clean_control": {
+      "n": 75,
+      "n_target_present": 75,
+      "si_sdri": null,
+      "si_sdr": 29.14038600681976,
+      "vad_auc": 0.9900667326026695,
+      "false_barge_ins_per_min": 1.1251758087201125,
+      "onset_recall": 0.9112903225806451,
+      "frame_recall": 0.9962444173771823,
+      "median_onset_delay_ms": 200.0
+    },
+    "esc50_real_rir": {
+      "n": 75,
+      "n_target_present": 75,
+      "si_sdri": 4.319128576394277,
+      "si_sdr": 6.0686893811244085,
+      "vad_auc": 0.901795778957366,
+      "false_barge_ins_per_min": 0.9116462812428777,
+      "onset_recall": 0.4868421052631579,
+      "frame_recall": 0.8968820837432103,
+      "median_onset_delay_ms": 210.0
+    },
+    "grid": {
+      "n": 525,
+      "n_target_present": 525,
+      "si_sdri": 5.0826441111021685,
+      "si_sdr": 5.049131587008975,
+      "vad_auc": 0.9218224492637757,
+      "false_barge_ins_per_min": 3.6103212713994126,
+      "onset_recall": 0.5194274028629857,
+      "frame_recall": 0.9612957773409258,
+      "median_onset_delay_ms": 230.0
+    },
+    "hyp_interferer_only": {
+      "n": 188,
+      "n_target_present": 0,
+      "si_sdri": null,
+      "si_sdr": null,
+      "vad_auc": null,
+      "false_barge_ins_per_min": 5.152717492610444,
+      "onset_recall": null,
+      "frame_recall": null,
+      "median_onset_delay_ms": null
+    },
+    "hyp_long_absence": {
+      "n": 187,
+      "n_target_present": 187,
+      "si_sdri": 8.518529847997014,
+      "si_sdr": 4.146913410098276,
+      "vad_auc": 0.8893026294710884,
+      "false_barge_ins_per_min": 4.108568934083148,
+      "onset_recall": 0.8415300546448088,
+      "frame_recall": 0.9593665602749816,
+      "median_onset_delay_ms": 210.0
+    },
+    "hyp_sir0": {
+      "n": 225,
+      "n_target_present": 225,
+      "si_sdri": 4.645033203472989,
+      "si_sdr": 4.5333936084485575,
+      "vad_auc": 0.9320633236291522,
+      "false_barge_ins_per_min": 4.493843434494742,
+      "onset_recall": 0.538083538083538,
+      "frame_recall": 0.9597461679280854,
+      "median_onset_delay_ms": 240.0
+    },
+    "opus16k": {
+      "n": 105,
+      "n_target_present": 105,
+      "si_sdri": 1.5285806212904023,
+      "si_sdr": 0.6756099120953121,
+      "vad_auc": 0.8888754943704085,
+      "false_barge_ins_per_min": 1.5593528685595477,
+      "onset_recall": 0.48633879781420764,
+      "frame_recall": 0.858533808244774,
+      "median_onset_delay_ms": 250.0
+    }
+  },
+  "do_no_harm": {
+    "conditions": [
+      "clean_control"
+    ],
+    "n": 75,
+    "si_sdr_mean_db": 29.14038600681976,
+    "si_sdr_min_db": 22.752099316597164,
+    "h5_target_db": 20.0
+  },
+  "timing": {
+    "audio_s": 12000.0,
+    "elapsed_s": 675.8170799869999,
+    "rtf_end_to_end": 0.05631808999891666
+  },
+  "acceptance": {
+    "si_sdri_improves": {
+      "criterion": "speaker-cluster 95% CI of mean SI-SDRi over unprocessed lies above 0 dB",
+      "mean_db": 5.168770658940615,
+      "ci95_low_db": 4.916126408731383,
+      "passed": true
+    },
+    "vad_auc": {
+      "criterion": "pooled frame-level VAD AUC >= 0.9",
+      "value": 0.9073324880937116,
+      "passed": true
+    },
+    "passed": true
+  }
+}
