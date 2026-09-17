@@ -23,7 +23,7 @@ this, because every one of those sounds is real speech.
 
 ## What Earmark does
 
-| | |
+| Capability | What it means for you |
 | --- | --- |
 | **Isolates your voice** | Removes noise, other talkers and the agent's own echo, so the speech recogniser hears only you. |
 | **Gates barge-in** | Emits a "you are speaking" signal every 10 ms, so the agent stops for you and nobody else. |
@@ -57,7 +57,7 @@ noisy input scores PESQ-WB 1.967 (published 1.97) and the official GTCRN checkpo
 ## How it works
 
 ```mermaid
-flowchart LR
+flowchart TB
     mic["Microphone<br/>48 or 44.1 kHz"] --> pre["Resample to 16 kHz<br/>20 ms window, 10 ms hop"]
     pre --> enc["Encoder<br/>32 ERB bands + low band"]
     enrol["About 5 s of your speech<br/>to a speaker embedding"] -. FiLM .-> enc
