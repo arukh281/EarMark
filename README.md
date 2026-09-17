@@ -1,70 +1,78 @@
-# Earmark
+<p align="center">
+  <img src="docs/assets/earmark-hero.svg" width="100%" alt="Earmark. Illustration: a microphone mix of your voice, another talker, the agent's own echo and a TV goes in; only your voice comes out, with an activity bar that lights up only while you speak.">
+</p>
 
-Personal voice isolation and barge-in gating for voice agents, running live in the browser.
+<p align="center">
+  <a href="https://github.com/arukh281/EarMark/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/arukh281/EarMark/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="LICENSE"><img alt="Licence: MIT" src="https://img.shields.io/badge/licence-MIT-3fb950"></a>
+  <img alt="Status: in development" src="https://img.shields.io/badge/status-in%20development-f5b942">
+  <img alt="Python 3.12, C++17, WebAssembly" src="https://img.shields.io/badge/Python%203.12%20%C2%B7%20C%2B%2B17%20%C2%B7%20WebAssembly-30363d">
+</p>
 
-> **Status: work in progress (end of week 1).** The foundations are built and tested:
->
-> - the signal contract;
-> - the data pipeline and Kaggle/Colab notebooks;
-> - three model sizes;
-> - the trainer with Hugging Face checkpointing;
-> - the weight export;
-> - the native C++ engine skeleton;
-> - the evaluation harness and its dev runner;
-> - CI, which also builds the WebAssembly module.
->
-> The harness reproduces the published VoiceBank+DEMAND figures. **Nothing has been trained
-> yet, so there are no Earmark results here.** Numbers will be added only when they come from
-> logged runs in `results/runs.jsonl`. See [docs/WEEK1_STATUS.md](docs/WEEK1_STATUS.md) for
-> exactly what is built, what was measured, and what comes next.
+**Earmark** gives voice agents ears that listen only to you. From about 5 seconds of your
+speech, a small causal model isolates your voice from everything else in the room and tells
+the agent, every 10 ms, whether *you* are speaking. It is built to run on-device, in the
+browser.
 
 ## The problem
 
-Voice agents get interrupted by the wrong voice. A TV in the background, a colleague talking
-nearby, or the agent's own voice leaking back from the laptop speaker can all trigger a
-"barge-in", and the agent stops mid-sentence. Ordinary noise suppression and voice-activity
-detection can't fix this, because every one of those sounds is real speech.
+Voice agents stop talking the moment they hear speech, even when it isn't you. A TV, a
+colleague nearby, or the agent's own voice leaking back from the laptop speaker all trigger
+false "barge-ins", and the agent cuts itself off mid-sentence. Noise suppression can't fix
+this, because every one of those sounds is real speech.
 
 ## What Earmark does
 
-You record about 5 seconds of your voice. After that, a small causal model runs in your
-browser tab and, every 10 ms:
+| | |
+| --- | --- |
+| **Isolates your voice** | Removes noise, other talkers and the agent's own echo, so the speech recogniser hears only you. |
+| **Gates barge-in** | Emits a "you are speaking" signal every 10 ms, so the agent stops for you and nobody else. |
+| **Stays on your device** | Designed to run locally in the page, so your audio doesn't need to leave your machine. |
 
-1. **Isolates your voice.** It removes noise and other talkers, including the agent's own
-   voice coming back through the speakers.
-2. **Gates barge-in.** It outputs a personal voice-activity signal that is on only while
-   *you* are speaking, so the agent stops for you and nobody else.
+One set of weights serves three modes: **Personal** (isolate your voice and gate barge-in),
+**Gate** (keep the raw audio, gate barge-in only) and **Denoise** (no enrolment).
 
-One set of weights serves three modes:
+## First results: the week-1 pilot
 
-| Mode     | What the speech recogniser hears     | What Earmark drives        |
-| -------- | ------------------------------------ | -------------------------- |
-| Personal | your isolated voice                  | barge-in and endpointing   |
-| Gate     | the raw microphone audio             | barge-in and endpointing   |
-| Denoise  | all speech, denoised (no enrolment)  | nothing                    |
+A **2-hour pilot** of the main model, scored on 1,500 synthetic dev mixtures through the same
+streaming path the engine will run. It proves the pipeline works end to end; it is not the
+final model. The full training run is in progress, and the test set stays untouched until
+every threshold is frozen on dev.
 
-By design, audio stays on your machine: the model runs in the page, and nothing is uploaded.
+| What it measures | Pilot result (95% CI) | Week-1 bar |
+| --- | --- | --- |
+| How much cleaner your voice gets (SI-SDR improvement) | **+5.17 dB** (4.92 to 5.41) | interval above 0 dB: passed |
+| How well it tells when you are speaking (VAD AUC) | **0.907** (0.899 to 0.916) | 0.90: passed |
+| False barge-ins, while detecting 95% of your speech | **4.1 per minute** (3.6 to 4.6) | tracked |
+
+Still weak: catching the *start* of your speech. The pilot catches 57% of speech onsets, a
+median 220 ms late, and that is the main target for the full run.
+
+Every number above is logged with its commit and inference path in
+[`results/runs.jsonl`](results/runs.jsonl). Before anything was scored, the evaluation
+harness was checked against published figures and reproduces them: on VoiceBank+DEMAND,
+noisy input scores PESQ-WB 1.967 (published 1.97) and the official GTCRN checkpoint 2.868
+(published 2.87).
 
 ## How it works
 
-```
-microphone (48 or 44.1 kHz)
-  -> resample to 16 kHz mono
-  -> 20 ms sqrt-Hann window, 10 ms hop (161 frequency bins)
-  -> features: 32 ERB bands + complex low band (0-3.15 kHz, 64 bins)
-  -> grouped-convolution encoder
-  -> FiLM conditioning on your speaker embedding
-  -> 2-layer GRU
-  -> heads: 32 ERB gains | order-3 deep filter on the low band | personal VAD
-  -> inverse STFT (overlap-add)
-  => your voice, plus a per-frame "you are speaking" signal
+```mermaid
+flowchart LR
+    mic["Microphone<br/>48 or 44.1 kHz"] --> pre["Resample to 16 kHz<br/>20 ms window, 10 ms hop"]
+    pre --> enc["Encoder<br/>32 ERB bands + low band"]
+    enrol["About 5 s of your speech<br/>to a speaker embedding"] -. FiLM .-> enc
+    enc --> gru["2-layer GRU"]
+    gru --> filt["ERB gains + deep filter"]
+    gru --> vad["Personal VAD"]
+    filt --> voice(["Your voice"])
+    vad --> gate(["Barge-in gate"])
 ```
 
 - **Causal and low-latency.** The model never looks at future audio: 20 ms of algorithmic
-  latency with zero lookahead.
-- **Enrolment.** A frozen WeSpeaker ResNet34-LM model turns about 5 s of your speech into a
-  256-dimensional speaker embedding. In the browser it will run once, in a Web Worker.
-- **Model sizes (measured).**
+  latency and zero lookahead.
+- **Enrolment.** A frozen WeSpeaker ResNet34-LM turns about 5 s of your speech into a
+  256-dimensional speaker embedding.
+- **Three model sizes, measured:**
 
   | Model | Parameters | Compute |
   | --- | --- | --- |
@@ -72,55 +80,43 @@ microphone (48 or 44.1 kHz)
   | S-GRU | 0.29M | 30.5 MMAC/s |
   | S-SSM (S4D state-space) | 0.26M | 31.1 MMAC/s |
 
-  All three run the same streaming `step()` path.
-- **Engine.** A dependency-free C++17 streaming engine behind a small C API (pocketfft is the
-  only header it uses). It already runs the full signal path: resampling, STFT, ERB features
-  and synthesis. Tests check it against Python goldens, and check that it allocates no memory
-  after start-up. The network itself is not wired in yet. The WebAssembly build (SIMD128,
-  fixed memory) runs in GitHub Actions; the AudioWorklet that runs it in the browser comes
-  next.
+- **Engine.** A dependency-free C++17 streaming engine behind a small C API, compiled to
+  WebAssembly in CI. It already runs the full signal path (resampling, STFT, ERB features
+  and synthesis), matches the Python goldens, and allocates no memory after start-up.
+  **Wiring the network in is this week's work;** until then it passes audio through
+  unchanged and reports no speech.
 - **One signal contract.** `contract/signal.yaml` generates the constants for Python, C++ and
   JavaScript, so the three implementations cannot drift apart.
 
 ## Training data
 
-Training mixtures are generated on the fly from public speech (LibriTTS-R and VCTK) plus
-noise, room impulse responses and music beds. A synthetic "agent voice" (Kokoro TTS) is used
-as an interferer, because an agent hearing itself is one of the main causes of false
-barge-ins. Training runs on Kaggle GPUs, with checkpoints in a private Hugging Face repo.
-Evaluation speakers never appear in training, and the mixer refuses to start if they do.
+Mixtures are generated on the fly from public speech (LibriTTS-R), noise, real and simulated
+room responses, and music. A synthetic agent voice (Kokoro TTS) is mixed in as an interferer,
+because an agent hearing itself is one of the main causes of false barge-ins. Evaluation
+speakers and voices never appear in training, and the mixer refuses to start if they do.
 Every source and its licence is listed in [docs/DATA_AND_LICENSES.md](docs/DATA_AND_LICENSES.md).
 
-## How it will be evaluated
+## How it will be judged
 
-Earmark is judged on **real room recordings**, not only on synthetic mixtures:
-
-- **Test data:** LibriCSS (real meeting-room recordings with overlapping talkers), plus a
-  short laptop-microphone set that will be recorded with volunteers' consent
-  ([consent form](docs/CONSENT_TEMPLATE.md)) and released.
-- **Baselines:** DeepFilterNet3 followed by a speaker-verification gate, and a raw personal
-  gate.
-- **Metrics:**
-  - false barge-ins per minute and barge-in onset delay;
-  - PESQ-WB, ESTOI and SI-SDR improvement;
-  - Whisper word error rate (raw vs enhanced vs gated);
-  - end-to-end added latency, measured with an acoustic loopback.
-- **Honest numbers:** every threshold is frozen on the dev split before any test run, and
-  every scored run is logged with its commit SHA and inference path. The harness was first
-  checked against published figures. On the VoiceBank+DEMAND test set, noisy input scores
-  PESQ-WB 1.967 and STOI 0.921 (published 1.97 and 0.921), and the official GTCRN checkpoint
-  scores PESQ-WB 2.868 (published 2.87).
+- **Real rooms, not only synthetic mixes:** LibriCSS meeting-room recordings, plus a
+  laptop-microphone set recorded with volunteers' consent ([consent form](docs/CONSENT_TEMPLATE.md))
+  and released.
+- **Baselines:** DeepFilterNet3 followed by a speaker-verification gate, and a raw personal gate.
+- **Metrics:** false barge-ins per minute and onset delay; PESQ-WB, ESTOI and SI-SDR
+  improvement; Whisper word error rate; end-to-end latency measured with an acoustic loopback.
+- **No peeking:** every threshold is frozen on dev before any test run, and every scored run
+  is logged with its commit and inference path.
 
 ## Roadmap
 
-- **Week 1 (done):** signal contract, data pipeline, model, trainer, export, engine skeleton,
-  evaluation harness, dev runner and CI.
-- **Week 2:** training runs on Kaggle, the network wired into the engine, and the in-browser
-  demo. Code freezes at the end of the week.
-- **Week 3:** all evaluation suites.
-- **Week 4:** release: results table, model card and a Hugging Face Space demo.
+- [x] **Week 1:** signal contract, data pipeline, three models, trainer, engine skeleton, evaluation harness and CI
+- [x] The pilot model passes the week-1 dev check
+- [ ] **Week 2:** full model training *(running now)*, the network wired into the engine, and the in-browser demo
+- [ ] **Week 3:** evaluation on real room recordings
+- [ ] **Week 4:** release with a results table, a model card and a Hugging Face Space demo
 
-## Development
+<details>
+<summary><b>Development</b></summary>
 
 Local tooling:
 - Python 3.12 in a uv-managed `.venv`, with `cmake` and `ninja` inside it;
@@ -152,7 +148,17 @@ make help                 # every target
 - the Emscripten build, uploaded as the `earmark-wasm` artefact and smoke-tested in Node;
 - on `main` only, the Suite B gates.
 
-Layout:
+Test rules:
+- Tests never download datasets and never need a GPU.
+- Mark anything slower than about a minute with `@pytest.mark.slow`.
+- Mark anything that needs fetched evaluation data with `@pytest.mark.gate`.
+- Tokens (for example `HF_TOKEN`) come only from environment variables or from Kaggle and
+  Colab Secrets.
+
+</details>
+
+<details>
+<summary><b>Repository layout</b></summary>
 
 - `contract/`: `signal.yaml`, the single source of every signal constant, and `codegen.py`,
   which generates `python/earmark/constants.py`, `engine/include/earmark_constants.h` and
@@ -174,12 +180,7 @@ Layout:
   - [FAILURES.md](docs/FAILURES.md);
   - [CONSENT_TEMPLATE.md](docs/CONSENT_TEMPLATE.md).
 
-Test rules:
-- Tests never download datasets and never need a GPU.
-- Mark anything slower than about a minute with `@pytest.mark.slow`.
-- Mark anything that needs fetched evaluation data with `@pytest.mark.gate`.
-- Tokens (for example `HF_TOKEN`) come only from environment variables or from Kaggle and
-  Colab Secrets.
+</details>
 
 ## Licence
 
