@@ -1,0 +1,296 @@
+{
+  "suite": "earmark-synth",
+  "runner": "earmark.eval.dev_runner",
+  "inference_path": "pytorch-stream",
+  "split": "dev",
+  "mode": "personal",
+  "created_utc": "2026-09-18T06:08:10+00:00",
+  "contract_hash": "875b5abc86eafabb",
+  "system": {
+    "name": "earmark-M-personal",
+    "inference_path": "pytorch-stream",
+    "params": 1984209,
+    "mmac_per_s": 196.6464,
+    "training_data": "Earmark training mix (docs/DATA_AND_LICENSES.md)",
+    "licence": "",
+    "notes": "PyTorch step() hop by hop, fp32; output latency-compensated by one hop"
+  },
+  "model": {
+    "config": "M",
+    "checkpoint": "/kaggle/tmp/eval/hf/models--alooo12--earmark-checkpoints/snapshots/02a4dd3f4a625b99e5e5ad9837b4d7842ff31d99/runs/M-v1/ckpt-000398324.pt",
+    "checkpoint_sha256": "43e3b4dc8fd8e54013577028b5d17a58353bf90b8bffb3c1cf09431e286b47a0",
+    "random_weights": false,
+    "init_seed": null,
+    "state_bytes_per_stream": 6400
+  },
+  "manifest": {
+    "path": "/kaggle/working/eval/dev/manifest.parquet",
+    "sha256": "6e6a06ecc74ab8909114f065aa06738ed320449f67bde81235f1588020492d40",
+    "n_mixtures": 1500,
+    "n_selected": 1500,
+    "splits": [
+      "dev"
+    ],
+    "conditions": null,
+    "limit": null
+  },
+  "pools_file": "/kaggle/working/eval/dev/pools.yaml",
+  "embeddings": "wespeaker-voxceleb-resnet34-LM",
+  "stream": {
+    "batch": 8,
+    "chunk_hops": 50,
+    "device": "cuda"
+  },
+  "storage": "numbers only: enhanced audio is scored as it streams and never written",
+  "n_items": 1500,
+  "n_skipped": 0,
+  "skipped": [],
+  "n_speakers": 31,
+  "per_condition_counts": {
+    "agent_tts": 120,
+    "clean_control": 75,
+    "esc50_real_rir": 75,
+    "grid": 525,
+    "hyp_interferer_only": 188,
+    "hyp_long_absence": 187,
+    "hyp_sir0": 225,
+    "opus16k": 105
+  },
+  "metrics": {
+    "si_sdri": {
+      "n": 1237,
+      "n_missing": 263,
+      "mean": 6.96721691876601,
+      "ci95": [
+        6.48321612112481,
+        7.378471732484969
+      ],
+      "unit": "cluster",
+      "n_units": 31
+    },
+    "si_sdr": {
+      "n": 1312,
+      "n_missing": 188,
+      "mean": 7.866342233744055,
+      "ci95": [
+        7.294799676352623,
+        8.412977630795282
+      ],
+      "unit": "cluster",
+      "n_units": 31
+    },
+    "si_sdr_mixture": {
+      "n": 1237,
+      "n_missing": 263,
+      "mean": -0.6525892396294066,
+      "ci95": [
+        -0.9002377503845909,
+        -0.4203981202366483
+      ],
+      "unit": "cluster",
+      "n_units": 31
+    },
+    "interferer_suppression_db": {
+      "n": 1227,
+      "n_missing": 273,
+      "mean": 21.352099308983295,
+      "ci95": [
+        20.107733535006595,
+        22.57893655292182
+      ],
+      "unit": "cluster",
+      "n_units": 31
+    }
+  },
+  "tsos_pooled_percent": {
+    "estimate": 5.348442801930694,
+    "ci95": [
+      4.12485215560353,
+      6.8830136509926145
+    ],
+    "n_items": 1312
+  },
+  "vad": {
+    "auc": 0.935772555310576,
+    "ci95": [
+      0.9249927434882297,
+      0.945540692392528
+    ],
+    "n_frames": 1198500,
+    "n_active_frames": 754809,
+    "n_items": 1500,
+    "n_units": 31,
+    "unit": "cluster",
+    "n_bins": 4096,
+    "n_invalid": 0
+  },
+  "bargein": {
+    "threshold": {
+      "source": "matched-on-this-run",
+      "threshold": 0.2043275684118271,
+      "level": "frame",
+      "target_recall": 0.95,
+      "achieved_recall": 0.950000596177311,
+      "n_positives": 754809,
+      "split": "dev"
+    },
+    "false_barge_ins_per_min": 3.962216948281575,
+    "onset_recall": 0.4949227373068433,
+    "frame_recall": 0.950000596177311,
+    "median_onset_delay_ms": 210.0,
+    "reference_onsets": 2265,
+    "detected_onsets": 1534,
+    "hits": 1121,
+    "false_barge_ins": 293,
+    "silent_minutes": 73.9485,
+    "active_frames": 754809,
+    "detected_active_frames": 717069,
+    "ci95": {
+      "false_barge_ins_per_min": {
+        "estimate": 3.962216948281575,
+        "ci95": [
+          3.389363410630847,
+          4.550178721414484
+        ],
+        "n_units": 31,
+        "n_invalid": 0
+      },
+      "onset_recall": {
+        "estimate": 0.4949227373068433,
+        "ci95": [
+          0.47038857265023376,
+          0.5210409622724923
+        ],
+        "n_units": 31,
+        "n_invalid": 0
+      },
+      "frame_recall": {
+        "estimate": 0.950000596177311,
+        "ci95": [
+          0.9328950215476702,
+          0.9634986914771168
+        ],
+        "n_units": 31,
+        "n_invalid": 0
+      }
+    }
+  },
+  "by_condition": {
+    "agent_tts": {
+      "n": 120,
+      "n_target_present": 120,
+      "si_sdri": 7.554110639311175,
+      "si_sdr": 7.648254244358145,
+      "vad_auc": 0.964198905524322,
+      "false_barge_ins_per_min": 2.4876911116869653,
+      "onset_recall": 0.5210084033613446,
+      "frame_recall": 0.9682574916759157,
+      "median_onset_delay_ms": 210.0
+    },
+    "clean_control": {
+      "n": 75,
+      "n_target_present": 75,
+      "si_sdri": null,
+      "si_sdr": 33.45928762106959,
+      "vad_auc": 0.9941173207826512,
+      "false_barge_ins_per_min": 1.1251758087201125,
+      "onset_recall": 0.967741935483871,
+      "frame_recall": 0.982683719041819,
+      "median_onset_delay_ms": 200.0
+    },
+    "esc50_real_rir": {
+      "n": 75,
+      "n_target_present": 75,
+      "si_sdri": 4.770420106723137,
+      "si_sdr": 6.519980911453269,
+      "vad_auc": 0.9000946505772313,
+      "false_barge_ins_per_min": 2.2791157031071942,
+      "onset_recall": 0.4473684210526316,
+      "frame_recall": 0.9096274753004576,
+      "median_onset_delay_ms": 210.0
+    },
+    "grid": {
+      "n": 525,
+      "n_target_present": 525,
+      "si_sdri": 7.083310806378215,
+      "si_sdr": 7.049798282285021,
+      "vad_auc": 0.94467314791182,
+      "false_barge_ins_per_min": 3.5395306582347184,
+      "onset_recall": 0.43660531697341515,
+      "frame_recall": 0.9607281353258564,
+      "median_onset_delay_ms": 220.0
+    },
+    "hyp_interferer_only": {
+      "n": 188,
+      "n_target_present": 0,
+      "si_sdri": null,
+      "si_sdr": null,
+      "vad_auc": null,
+      "false_barge_ins_per_min": 3.714749820254041,
+      "onset_recall": null,
+      "frame_recall": null,
+      "median_onset_delay_ms": null
+    },
+    "hyp_long_absence": {
+      "n": 187,
+      "n_target_present": 187,
+      "si_sdri": 10.830535065859491,
+      "si_sdr": 6.4589186279607524,
+      "vad_auc": 0.9346181458417435,
+      "false_barge_ins_per_min": 5.49521094933621,
+      "onset_recall": 0.6338797814207651,
+      "frame_recall": 0.9611158850969801,
+      "median_onset_delay_ms": 200.0
+    },
+    "hyp_sir0": {
+      "n": 225,
+      "n_target_present": 225,
+      "si_sdri": 6.320083495590983,
+      "si_sdr": 6.208443900566548,
+      "vad_auc": 0.9415451386601859,
+      "false_barge_ins_per_min": 3.954582222355373,
+      "onset_recall": 0.4742014742014742,
+      "frame_recall": 0.9549919396704828,
+      "median_onset_delay_ms": 220.0
+    },
+    "opus16k": {
+      "n": 105,
+      "n_target_present": 105,
+      "si_sdri": 1.791481205902089,
+      "si_sdr": 0.9385104967069994,
+      "vad_auc": 0.8948678295325144,
+      "false_barge_ins_per_min": 2.3390293028393216,
+      "onset_recall": 0.3989071038251366,
+      "frame_recall": 0.865277939974308,
+      "median_onset_delay_ms": 220.0
+    }
+  },
+  "do_no_harm": {
+    "conditions": [
+      "clean_control"
+    ],
+    "n": 75,
+    "si_sdr_mean_db": 33.45928762106959,
+    "si_sdr_min_db": -1.3017616605000515,
+    "h5_target_db": 20.0
+  },
+  "timing": {
+    "audio_s": 12000.0,
+    "elapsed_s": 686.65702085,
+    "rtf_end_to_end": 0.05722141840416667
+  },
+  "acceptance": {
+    "si_sdri_improves": {
+      "criterion": "speaker-cluster 95% CI of mean SI-SDRi over unprocessed lies above 0 dB",
+      "mean_db": 6.96721691876601,
+      "ci95_low_db": 6.48321612112481,
+      "passed": true
+    },
+    "vad_auc": {
+      "criterion": "pooled frame-level VAD AUC >= 0.9",
+      "value": 0.935772555310576,
+      "passed": true
+    },
+    "passed": true
+  }
+}
