@@ -32,21 +32,23 @@ this, because every one of those sounds is real speech.
 One set of weights serves three modes: **Personal** (isolate your voice and gate barge-in),
 **Gate** (keep the raw audio, gate barge-in only) and **Denoise** (no enrolment).
 
-## First results: the week-1 pilot
+## Results: the first full model
 
-A **2-hour pilot** of the main model, scored on 1,500 synthetic dev mixtures through the same
-streaming path the engine will run. It proves the pipeline works end to end; it is not the
-final model. The full training run is in progress, and the test set stays untouched until
-every threshold is frozen on dev.
+**M-v1** is the main model (1.98M parameters) trained to completion: 398,324 steps, 17.5 hours
+on Kaggle's free T4 GPUs. It is scored on 1,500 synthetic dev mixtures from 31 speakers it
+never heard in training, through the same streaming path the engine will run. The test set
+stays untouched until every threshold is frozen on dev.
 
-| What it measures | Pilot result (95% CI) | Week-1 bar |
-| --- | --- | --- |
-| How much cleaner your voice gets (SI-SDR improvement) | **+5.17 dB** (4.92 to 5.41) | interval above 0 dB: passed |
-| How well it tells when you are speaking (VAD AUC) | **0.907** (0.899 to 0.916) | 0.90: passed |
-| False barge-ins, while detecting 95% of your speech | **4.1 per minute** (3.6 to 4.6) | tracked |
+| What it measures | M-v1 (95% CI) | 2-hour pilot | Week-1 bar |
+| --- | --- | --- | --- |
+| How much cleaner your voice gets (SI-SDR improvement) | **+6.97 dB** (6.48 to 7.38) | +5.17 dB | interval above 0 dB: passed |
+| How much other voices are turned down | **21.4 dB** (20.1 to 22.6) | 13.8 dB | tracked |
+| How well it tells when you are speaking (VAD AUC) | **0.936** (0.925 to 0.946) | 0.907 | 0.90: passed |
+| False barge-ins, while detecting 95% of your speech | **4.0 per minute** (3.4 to 4.6) | 4.1 per minute | tracked |
 
-Still weak: catching the *start* of your speech. The pilot catches 57% of speech onsets, a
-median 220 ms late, and that is the main target for the full run.
+Still weak: catching the *start* of your speech. M-v1 catches 49% of speech onsets, a median
+210 ms late, down from the pilot's 57%. Training longer made it better at cleaning and at
+recognising you, but not quicker to react, so onsets are the main target for the next run.
 
 Every number above is logged with its commit and inference path in
 [`results/runs.jsonl`](results/runs.jsonl). Before anything was scored, the evaluation
@@ -111,7 +113,8 @@ Every source and its licence is listed in [docs/DATA_AND_LICENSES.md](docs/DATA_
 
 - [x] **Week 1:** signal contract, data pipeline, three models, trainer, engine skeleton, evaluation harness and CI
 - [x] The pilot model passes the week-1 dev check
-- [ ] **Week 2:** full model training *(running now)*, the network wired into the engine, and the in-browser demo
+- [x] The full main model (M-v1) trains to completion and passes the dev check
+- [ ] **Week 2:** faster onset detection, the network wired into the engine, and the in-browser demo
 - [ ] **Week 3:** evaluation on real room recordings
 - [ ] **Week 4:** release with a results table, a model card and a Hugging Face Space demo
 
