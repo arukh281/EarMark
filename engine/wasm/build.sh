@@ -38,7 +38,7 @@ common=(
   -I"${engine}/include" -I"${engine}/src" -isystem "${engine}/third_party"
   -Wall -Wextra -Wpedantic -Wshadow -Wdouble-promotion -Werror
 )
-sources=(arena engine erb fft gru matvec_f32 resampler ringbuf state stft weights)
+sources=(arena engine erb fft gru matvec_f32 network resampler ringbuf state stft weights)
 
 objects=()
 for name in "${sources[@]}"; do
@@ -55,7 +55,7 @@ done
 exports=(
   em_abi_version em_contract_hash em_status_string em_build_info
   em_create em_destroy em_set_embedding em_process em_process_hop_16k em_reset
-  em_device_rate em_latency_samples em_latency_seconds em_arena_bytes em_state_bytes em_xruns
+  em_device_rate em_has_network em_latency_samples em_latency_seconds em_arena_bytes em_state_bytes em_xruns
   malloc free
 )
 export_list="$(printf '_%s,' "${exports[@]}")"

@@ -8,9 +8,11 @@
 //   * every em_* export plus malloc, free and memory is present, and the ABI version and
 //     contract hash match include/earmark.h and web/src/constants.js;
 //   * at 16 kHz, em_process returns the input delayed by em_latency_samples() within 1e-5
-//     (the network is not wired yet, so the signal path is an exact identity);
+//     (weights_small has no network, so the signal path is an exact identity);
 //   * at 48 kHz, a 997 Hz tone comes back after em_latency_seconds() with SNR above 90 dB,
-//     the same bar as the native Catch2 test, and with zero FIFO under- or overruns.
+//     the same bar as the native Catch2 test, and with zero FIFO under- or overruns;
+//   * the golden network (network_model) run hop by hop reproduces PyTorch's audio and
+//     VAD from the network golden, as engine/tests/test_network.cpp does natively.
 // Exit status: 0 pass, 1 a check failed.
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -24,7 +26,7 @@ const contract = await import(pathToFileURL(resolve(repoRoot, "web", "src", "con
 const goldens = resolve(engineDir, "tests", "goldens");
 
 const EM_OK = 0;
-const EM_ABI_VERSION = 1;
+const EM_ABI_VERSION = 2;
 const failures = [];
 const report = { wasm: wasmPath };
 
@@ -84,8 +86,8 @@ if (typeof ex._initialize === "function") ex._initialize(); // reactor: run stat
 const required = [
   "em_abi_version", "em_contract_hash", "em_status_string", "em_build_info",
   "em_create", "em_destroy", "em_set_embedding", "em_process", "em_process_hop_16k", "em_reset",
-  "em_device_rate", "em_latency_samples", "em_latency_seconds", "em_arena_bytes", "em_state_bytes",
-  "em_xruns", "malloc", "free",
+  "em_device_rate", "em_has_network", "em_latency_samples", "em_latency_seconds", "em_arena_bytes",
+  "em_state_bytes", "em_xruns", "malloc", "free",
 ];
 const missing = required.filter((name) => typeof ex[name] !== "function");
 if (!check(missing.length === 0, `missing exports: ${missing.join(", ")}`)) finish();
@@ -125,6 +127,27 @@ function copyIn(bytes) {
 
 function statusName(status) {
   return `${status} (${cString(ex.em_status_string(status))})`;
+}
+
+// Tensors of an .emwb file by name, as Float32Array / Int32Array copies (the layout is in
+// python/earmark/export/blob.py: 64-byte header, 128-byte entries, then the data).
+function readBlob(bytes) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const count = view.getUint32(12, true);
+  const tableOffset = Number(view.getBigUint64(32, true));
+  const dataOffset = Number(view.getBigUint64(40, true));
+  const tensors = new Map();
+  for (let i = 0; i < count; i += 1) {
+    const entry = tableOffset + 128 * i;
+    const nameBytes = bytes.subarray(entry, entry + 72);
+    const name = new TextDecoder().decode(nameBytes.subarray(0, nameBytes.indexOf(0)));
+    const dtype = view.getUint32(entry + 72, true);
+    const start = dataOffset + Number(view.getBigUint64(entry + 104, true));
+    const numel = Number(view.getBigUint64(entry + 112, true));
+    const copy = bytes.slice(start, start + 4 * numel).buffer;
+    tensors.set(name, dtype === 1 ? new Float32Array(copy) : new Int32Array(copy));
+  }
+  return tensors;
 }
 
 const blob = new Uint8Array(readFileSync(resolve(goldens, "weights_small.emwb")));
@@ -227,7 +250,59 @@ report.build_info = cString(ex.em_build_info());
   check(Math.abs(delay - latency) <= 0.5, `em_latency_samples ${latency} is not the rounded delay ${delay}`);
   check(xruns === 0, `48 kHz stream reported ${xruns} FIFO xruns`);
   check(ex.em_reset(handle) === EM_OK, "em_reset failed");
+  check(ex.em_has_network(handle) === 0, "em_has_network is not 0 for weights_small");
   ex.em_destroy(handle);
+}
+
+{
+  // The network: the golden model, hop by hop at 16 kHz in Personal mode, against the
+  // float64 PyTorch reference in network.emwb (same bar as the native test).
+  const netBlob = new Uint8Array(readFileSync(resolve(goldens, "network_model.emwb")));
+  const netManifest = new Uint8Array(readFileSync(resolve(goldens, "network_model.json")));
+  const golden = readBlob(new Uint8Array(readFileSync(resolve(goldens, "network.emwb"))));
+  const netBlobPtr = copyIn(netBlob);
+  const netManifestPtr = copyIn(netManifest);
+  const handle = u32(
+    ex.em_create(netBlobPtr, netBlob.length, netManifestPtr, netManifest.length, contract.SAMPLE_RATE, statusPtr),
+  );
+  const status = new Int32Array(memory.buffer, statusPtr, 1)[0];
+  if (check(handle !== 0 && status === EM_OK, `em_create(network_model) failed: ${statusName(status)}`)) {
+    check(ex.em_has_network(handle) === 1, "em_has_network is not 1 for network_model");
+    const embedding = golden.get("embedding");
+    const embPtr = alloc(4 * embedding.length);
+    new Float32Array(memory.buffer, embPtr, embedding.length).set(embedding);
+    check(ex.em_set_embedding(handle, embPtr) === EM_OK, "em_set_embedding(golden embedding) failed");
+    const x = golden.get("x");
+    const wantWav = golden.get("personal.wav");
+    const wantVad = golden.get("personal.vad");
+    const hop = contract.HOP_LENGTH;
+    const inPtr = alloc(4 * hop);
+    const outPtr = alloc(4 * hop);
+    const vadPtr = alloc(4);
+    let maxErr = 0;
+    let maxVadErr = 0;
+    let peak = 0;
+    for (let t = 0; (t + 1) * hop <= x.length; t += 1) {
+      new Float32Array(memory.buffer, inPtr, hop).set(x.subarray(t * hop, (t + 1) * hop));
+      const stepStatus = ex.em_process_hop_16k(handle, inPtr, outPtr, vadPtr);
+      if (!check(stepStatus === EM_OK, `em_process_hop_16k returned ${statusName(stepStatus)}`)) break;
+      const out = new Float32Array(memory.buffer, outPtr, hop);
+      for (let i = 0; i < hop; i += 1) {
+        const want = wantWav[t * hop + i];
+        peak = Math.max(peak, Math.abs(want));
+        maxErr = Math.max(maxErr, Math.abs(out[i] - want));
+      }
+      const vad = new Float32Array(memory.buffer, vadPtr, 1)[0];
+      maxVadErr = Math.max(maxVadErr, Math.abs(vad - wantVad[t]));
+    }
+    report.network_16k = { max_abs_error: maxErr, max_vad_error: maxVadErr, peak };
+    check(maxErr <= 1e-5 * Math.max(1, peak), `network output differs from PyTorch by ${maxErr}`);
+    check(maxVadErr <= 1e-5, `network VAD differs from PyTorch by ${maxVadErr}`);
+    for (const ptr of [embPtr, inPtr, outPtr, vadPtr]) ex.free(ptr);
+    ex.em_destroy(handle);
+  }
+  ex.free(netBlobPtr);
+  ex.free(netManifestPtr);
 }
 
 finish();

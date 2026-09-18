@@ -7,10 +7,14 @@
  * throw. The engine is single-threaded: do not call it on one handle from two threads
  * at once.
  *
- * WEEK-1 SKELETON: the network layers (encoder, FiLM, GRU body, heads, deep filter)
- * are not wired into em_process yet. Every other stage runs at full cost: resampling,
- * WOLA analysis, ERB and low-band normalisation, synthesis. The ERB gains are fixed at
- * 1, so the output is the input delayed by em_latency_samples(), and *vad_out is 0.
+ * Per 16 kHz hop, em_process runs the whole model: WOLA analysis, ERB and low-band
+ * features, the network (encoders, FiLM, GRU body, VAD / gain / deep-filter heads), the
+ * ERB gains, the deep filter and synthesis. It matches EarmarkNet.step in PyTorch (see
+ * engine/tests/test_network.cpp). Only GRU bodies are supported (M, M-256, S-GRU).
+ *
+ * A blob without any network tensors (a signal-path test blob) still loads: the gains
+ * are then fixed at 1, the output is the input delayed by em_latency_samples(), and
+ * *vad_out is 0. em_has_network() tells the two apart.
  *
  * Weights come from a .emwb blob and its JSON manifest, both written by
  * earmark.export.blob. em_create refuses a blob or manifest whose contract hash
@@ -35,7 +39,7 @@ extern "C" {
 #endif
 
 /** Bumped whenever a signature or a documented behaviour of this header changes. */
-#define EM_ABI_VERSION 1
+#define EM_ABI_VERSION 2
 
 /** Status codes (em_status). Zero is success; errors are negative. */
 #define EM_OK 0
@@ -78,7 +82,9 @@ EM_API const char* em_build_info(void);
  * status: receives EM_OK or the reason for failure (may be NULL).
  *
  * The blob must contain const.erb_norm_init [ERB_BANDS], const.spec_norm_init [DF_BINS]
- * and conditioner.null_embedding [EMBEDDING_DIM], all float32.
+ * and conditioner.null_embedding [EMBEDDING_DIM], all float32. If it has any network
+ * tensor it must have all of them with consistent shapes and a GRU body; otherwise
+ * em_create reports EM_ERR_MISSING_TENSOR.
  * Returns NULL on failure.
  */
 EM_API em_engine* em_create(const uint8_t* blob, size_t blob_bytes, const char* manifest, size_t manifest_bytes,
@@ -115,6 +121,8 @@ EM_API em_status em_reset(em_engine* engine);
 
 /** The device rate the engine was created for (0 for NULL). */
 EM_API int32_t em_device_rate(const em_engine* engine);
+/** 1 when the blob held a network (em_process enhances), 0 for a signal-path-only blob or NULL. */
+EM_API int32_t em_has_network(const em_engine* engine);
 
 /**
  * End-to-end latency of em_process in device samples, rounded to the nearest sample:

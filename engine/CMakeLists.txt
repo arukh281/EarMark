@@ -48,6 +48,7 @@ set(EARMARK_SOURCES
   src/fft.cpp
   src/gru.cpp
   src/matvec_f32.cpp
+  src/network.cpp
   src/resampler.cpp
   src/ringbuf.cpp
   src/state.cpp
@@ -100,6 +101,7 @@ if(EARMARK_BUILD_TESTS)
     tests/test_matvec.cpp
     tests/test_weights.cpp
     tests/test_engine.cpp
+    tests/test_network.cpp
   )
   target_link_libraries(earmark_tests PRIVATE earmark_core earmark_catch2)
   target_compile_definitions(earmark_tests PRIVATE ${EARMARK_TEST_DEFINITIONS})
@@ -110,7 +112,7 @@ if(EARMARK_BUILD_TESTS)
   target_compile_definitions(earmark_alloc_tests PRIVATE ${EARMARK_TEST_DEFINITIONS})
   target_compile_options(earmark_alloc_tests PRIVATE ${EARMARK_TEST_OPTIONS})
 
-  foreach(tag ringbuf resampler stft erb gru matvec weights arena capi)
+  foreach(tag ringbuf resampler stft erb gru matvec weights arena capi network)
     add_test(NAME engine.${tag} COMMAND earmark_tests "[${tag}]")
   endforeach()
   add_test(NAME engine.no_alloc_after_create COMMAND earmark_alloc_tests "[alloc]")

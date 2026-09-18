@@ -484,8 +484,12 @@ def build_manifest(
     seed: int | None = None,
     random_weights: bool = False,
     git_sha: str | None = None,
+    source: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Manifest for a model blob. Deterministic: no timestamps."""
+    """Manifest for a model blob. Deterministic: no timestamps.
+
+    ``source`` (for trained weights: the checkpoint file and its SHA-256) is stored as is.
+    """
     import torch
 
     from earmark.model.earmark_net import MODEL_FRAME_OFFSET, OUTPUT_DELAY_SAMPLES
@@ -497,6 +501,7 @@ def build_manifest(
         "created_by": "earmark.export.blob",
         "random_weights": random_weights,
         "seed": seed,
+        "source": dict(source) if source is not None else None,
         "git_sha": git_sha,
         "torch_version": torch.__version__,
         "model": {
@@ -538,6 +543,7 @@ def export_model(
     seed: int | None = None,
     random_weights: bool = False,
     git_sha: str | None = None,
+    source: Mapping[str, Any] | None = None,
 ) -> ExportResult:
     """Write ``<stem>.emwb`` and ``<stem>.json`` for ``net`` into ``out_dir``."""
     out = Path(out_dir)
@@ -546,7 +552,13 @@ def export_model(
     manifest_path = out / f"{stem}{MANIFEST_SUFFIX}"
     data = write_blob(blob_path, model_tensors(net))
     manifest = build_manifest(
-        net, data, blob_file=blob_path.name, seed=seed, random_weights=random_weights, git_sha=git_sha
+        net,
+        data,
+        blob_file=blob_path.name,
+        seed=seed,
+        random_weights=random_weights,
+        git_sha=git_sha,
+        source=source,
     )
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     return ExportResult(
@@ -581,6 +593,32 @@ def export_random(
     net = build(config).eval()
     return export_model(
         net, out_dir, stem or random_stem(config, seed), seed=seed, random_weights=True, git_sha=git_sha
+    )
+
+
+def checkpoint_stem(config: str, checkpoint: str | Path) -> str:
+    """Default file stem of a checkpoint export, e.g. ``earmark-m-ckpt-000398324``."""
+    return f"earmark-{config.strip().lower().replace('_', '-')}-{Path(checkpoint).stem}"
+
+
+def export_checkpoint(
+    config: str,
+    checkpoint: str | Path,
+    out_dir: str | Path = "results/export",
+    *,
+    stem: str | None = None,
+    git_sha: str | None = None,
+) -> ExportResult:
+    """Export trained weights: load ``checkpoint`` into ``config`` (strict, ``weights_only``).
+
+    The manifest's ``source`` records the checkpoint file name and SHA-256.
+    """
+    from earmark.eval.dev_runner import load_model
+
+    net, info = load_model(config, checkpoint)
+    source = {"checkpoint": Path(checkpoint).name, "checkpoint_sha256": info["checkpoint_sha256"]}
+    return export_model(
+        net, out_dir, stem or checkpoint_stem(config, checkpoint), git_sha=git_sha, source=source
     )
 
 
@@ -637,6 +675,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     rnd.add_argument("--seed", type=int, default=0)
     rnd.add_argument("--out", default="results/export", help="output directory")
     rnd.add_argument("--stem", default=None, help="file stem (default earmark-<config>-random-seed<N>)")
+    ckp = sub.add_parser("checkpoint", help="export a trained checkpoint (strict, weights_only load)")
+    ckp.add_argument("checkpoint", help="trainer checkpoint (.pt)")
+    ckp.add_argument("--config", default="M", help="S-GRU, M or M-256 (the engine runs GRU bodies)")
+    ckp.add_argument("--out", default="results/export", help="output directory")
+    ckp.add_argument("--stem", default=None, help="file stem (default earmark-<config>-<checkpoint stem>)")
     ins = sub.add_parser("inspect", help="validate a blob (and optionally its manifest) and list tensors")
     ins.add_argument("blob")
     ins.add_argument("--manifest", default=None)
@@ -644,6 +687,15 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "random":
         result = export_random(args.config, args.seed, args.out, stem=args.stem, git_sha=_git_sha())
+        print(f"wrote {result.blob_path} ({result.blob_bytes} bytes, {result.tensor_count} tensors, "
+              f"{result.params} params) and {result.manifest_path}")
+        return 0
+    if args.command == "checkpoint":
+        try:
+            result = export_checkpoint(args.config, args.checkpoint, args.out, stem=args.stem, git_sha=_git_sha())
+        except (OSError, ValueError, KeyError) as exc:
+            print(f"cannot export {args.checkpoint}: {exc}", file=sys.stderr)
+            return 1
         print(f"wrote {result.blob_path} ({result.blob_bytes} bytes, {result.tensor_count} tensors, "
               f"{result.params} params) and {result.manifest_path}")
         return 0
@@ -688,6 +740,8 @@ __all__ = [
     "build_manifest",
     "conventions",
     "export_model",
+    "checkpoint_stem",
+    "export_checkpoint",
     "export_random",
     "load_into",
     "model_tensors",
