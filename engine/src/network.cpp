@@ -17,20 +17,29 @@ constexpr int32_t kDfOrder = EARMARK_DF_ORDER;
 /// F.normalize's eps in Conditioner.resolve.
 constexpr float kNormalizeEps = 1e-8f;
 
-/// Names are at most "body.gru.weight_ih_l3" plus a prefix; 96 bytes is ample.
+/// A tensor name. Blob names are at most 71 bytes, so 96 is ample; a name that would not
+/// fit is left empty, which matches no tensor.
 struct Name {
-  char text[96];
+  char text[96] = {};
 };
 
+/// `prefix` followed by `suffix`.
 Name name_of(const char* prefix, const char* suffix) {
   Name name;
-  std::snprintf(name.text, sizeof(name.text), "%s%s", prefix, suffix);
+  const std::size_t head = std::strlen(prefix);
+  const std::size_t tail = std::strlen(suffix);
+  if (head + tail < sizeof(name.text)) {
+    std::memcpy(name.text, prefix, head);
+    std::memcpy(name.text + head, suffix, tail + 1);
+  }
   return name;
 }
 
+/// `pattern` (one %d) formatted with `index`.
 Name name_of(const char* pattern, int32_t index) {
   Name name;
-  std::snprintf(name.text, sizeof(name.text), pattern, static_cast<int>(index));
+  const int written = std::snprintf(name.text, sizeof(name.text), pattern, static_cast<int>(index));
+  if (written < 0 || static_cast<std::size_t>(written) >= sizeof(name.text)) name.text[0] = '\0';
   return name;
 }
 
@@ -89,9 +98,9 @@ bool bind_branch(const Blob& blob, const char* prefix, int32_t in_channels, int3
   if (!find_vector(blob, name_of(prefix, ".first.bias").text, channels, &branch->first.bias)) return false;
 
   int32_t bins = in_bins;
+  const Name down_pattern = name_of(prefix, ".down.%d");  // prefixes are literals without '%'
   for (int32_t i = 0; i <= kMaxDownsamples; ++i) {
-    Name base;
-    std::snprintf(base.text, sizeof(base.text), "%s.down.%d", prefix, static_cast<int>(i));
+    const Name base = name_of(down_pattern.text, i);
     TensorView probe;
     if (!blob.find(name_of(base.text, ".weight").text, &probe)) break;
     if (i == kMaxDownsamples) return false;  // more stride-2 convs than the engine supports
