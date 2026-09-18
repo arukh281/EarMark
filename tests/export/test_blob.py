@@ -216,3 +216,43 @@ def test_cli_random_and_inspect(tmp_path: Path, capsys: pytest.CaptureFixture[st
     corrupt.write_bytes(_flip(blob_path.read_bytes(), blob_path.stat().st_size - 1))
     assert B.main(["inspect", str(corrupt)]) == 1
     assert "invalid" in capsys.readouterr().err
+
+
+def _save_trained_checkpoint(path: Path, config: str = "S-GRU") -> torch.nn.Module:
+    """A trainer-style checkpoint of seeded weights (stands in for a trained model)."""
+    with torch.random.fork_rng(devices=[]):
+        torch.manual_seed(11)
+        net = build(config).eval()
+    torch.save({"config": config, "step": 42, "model": net.state_dict()}, path)
+    return net
+
+
+def test_cli_checkpoint_exports_the_trained_weights(tmp_path: Path) -> None:
+    ckpt = tmp_path / "ckpt-000000042.pt"
+    trained = _save_trained_checkpoint(ckpt)
+    out = tmp_path / "out"
+    assert B.main(["checkpoint", str(ckpt), "--config", "S-GRU", "--out", str(out)]) == 0
+    stem = B.checkpoint_stem("S-GRU", ckpt)
+    assert stem == "earmark-s-gru-ckpt-000000042"
+    data = (out / f"{stem}.emwb").read_bytes()
+    manifest = B.read_manifest(out / f"{stem}.json")
+    B.verify_manifest(manifest, data)
+    assert manifest["random_weights"] is False
+    assert manifest["source"] == {
+        "checkpoint": ckpt.name,
+        "checkpoint_sha256": hashlib.sha256(ckpt.read_bytes()).hexdigest(),
+    }
+    fresh = build("S-GRU").eval()
+    B.load_into(fresh, B.unpack_blob(data))
+    for name, value in trained.state_dict().items():
+        assert torch.equal(fresh.state_dict()[name], value), name
+
+
+def test_cli_checkpoint_refuses_a_checkpoint_saved_for_another_config(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    ckpt = tmp_path / "ckpt.pt"
+    _save_trained_checkpoint(ckpt, "S-GRU")
+    assert B.main(["checkpoint", str(ckpt), "--config", "M", "--out", str(tmp_path / "out")]) == 1
+    assert "S-GRU" in capsys.readouterr().err
+    assert not (tmp_path / "out").exists()

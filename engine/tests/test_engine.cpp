@@ -55,7 +55,7 @@ std::vector<float> process(em_engine* e, const std::vector<float>& x, const std:
     const std::size_t n = std::min(blocks[index++ % blocks.size()], x.size() - pos);
     float vad = -1.0f;
     REQUIRE(em_process(e, x.data() + pos, n, y.data() + pos, &vad) == EM_OK);
-    REQUIRE(vad == 0.0f);  // network not wired yet
+    REQUIRE(vad == 0.0f);  // weights_small has no network
     pos += n;
   }
   return y;

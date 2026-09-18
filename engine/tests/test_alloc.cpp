@@ -79,16 +79,19 @@ TEST_CASE("the allocation counter sees every allocation entry point, once each",
 }
 
 TEST_CASE("no allocation after em_create", "[alloc]") {
+  // weights_small runs the signal path alone; network_model adds the whole network.
+  const std::string stem = GENERATE(as<std::string>{}, "weights_small", "network_model");
   const int32_t rate = GENERATE(16000, 48000, 44100, 22050, 8000, 96000);
-  INFO("device rate " << rate);
-  const std::vector<uint8_t> blob = earmark_test::read_file(earmark_test::golden_path("weights_small.emwb"));
-  const std::vector<uint8_t> manifest = earmark_test::read_file(earmark_test::golden_path("weights_small.json"));
+  INFO("blob " << stem << ", device rate " << rate);
+  const std::vector<uint8_t> blob = earmark_test::read_file(earmark_test::golden_path(stem + ".emwb"));
+  const std::vector<uint8_t> manifest = earmark_test::read_file(earmark_test::golden_path(stem + ".json"));
   REQUIRE(!blob.empty());
   em_status status = 1;
   em_engine* engine = em_create(blob.data(), blob.size(), reinterpret_cast<const char*>(manifest.data()),
                                 manifest.size(), rate, &status);
   REQUIRE(status == EM_OK);
   REQUIRE(engine != nullptr);
+  REQUIRE(em_has_network(engine) == (stem == "network_model" ? 1 : 0));
 
   std::vector<float> in(4096);
   std::vector<float> out(4096);

@@ -17,6 +17,11 @@ Golden                  Contents
 ``gru``                 two stacked 2-layer GRUs (40->48 and 37->30), a sequence each
 ``matvec``              dense ``W x + b`` for awkward shapes, plus a grouped linear
 ``weights_small``       small blob covering every dtype and rank, with a manifest
+``network_model``       a tiny random-weight GRU EarmarkNet (every layer type of M), with a manifest
+``network_partial``     ``network_model`` without its GRU body, which em_create must refuse
+``network``          1 s through ``network_model`` hop by hop: input, embedding, the FiLM
+                        conditioning, per-layer traces of the first frames, and the output
+                        audio and VAD in Personal and NULL-embedding modes
 ======================  ===================================================================
 
 Regenerate with ``python -m earmark.export.golden`` (default output
@@ -357,7 +362,140 @@ def weights_small_manifest(blob_bytes: bytes) -> dict[str, Any]:
     }
 
 
-#: Golden name -> builder. ``weights_small`` also gets a manifest (see :func:`write_goldens`).
+#: Architecture of the end-to-end golden: M's layer types (grouped convs, grouped
+#: enc_proj and df_head, FiLM, a 2-layer GRU) at a size that keeps the files small.
+NETWORK_CONFIG: Final[dict[str, Any]] = {
+    "name": "golden-gru",
+    "body": "gru",
+    "hidden": 24,
+    "body_layers": 2,
+    "enc_channels": 4,
+    "enc_groups": 2,
+    "enc_proj_groups": 2,
+    "film_rank": 8,
+    "df_head_groups": 4,
+}
+#: torch seed of the golden network's initialisation.
+NETWORK_TORCH_SEED: Final[int] = 20260918
+#: Hops streamed through the golden network (1 s).
+NETWORK_HOPS: Final[int] = 100
+#: Leading frames whose per-layer intermediates are stored.
+NETWORK_TRACE_FRAMES: Final[int] = 12
+#: Per-layer trace tensors (EarmarkNet.step trace names), complex ones stored as (re, im).
+NETWORK_TRACE_NAMES: Final[tuple[str, ...]] = (
+    "erb_feat",
+    "spec_feat",
+    "enc_erb",
+    "enc_df",
+    "enc",
+    "film_pre",
+    "body_out",
+    "vad_logit",
+    "film_post",
+    "gains",
+    "df_raw",
+    "spec_out",
+    "wav",
+)
+
+
+def network_net() -> Any:
+    """The golden network (float32, eval mode); the global torch RNG is left untouched."""
+    from earmark.model.earmark_net import EarmarkConfig, EarmarkNet
+
+    with torch.random.fork_rng(devices=[]):
+        torch.manual_seed(NETWORK_TORCH_SEED)
+        net = EarmarkNet(EarmarkConfig(**NETWORK_CONFIG)).eval()
+    return net
+
+
+def network_model_tensors() -> dict[str, np.ndarray]:
+    """The golden network as a model blob (what em_create loads)."""
+    return B.model_tensors(network_net())
+
+
+def network_partial_tensors() -> dict[str, np.ndarray]:
+    """The golden network without its GRU body (like an S-SSM blob): em_create must refuse it."""
+    return {name: value for name, value in network_model_tensors().items() if not name.startswith("body.")}
+
+
+def network_model_manifest(blob_bytes: bytes) -> dict[str, Any]:
+    """Manifest of the golden network blob."""
+    return B.build_manifest(
+        network_net(), blob_bytes, blob_file="network_model.emwb", seed=NETWORK_TORCH_SEED, random_weights=True
+    )
+
+
+def _network_signal(rng: np.random.Generator) -> np.ndarray:
+    """1 s of two tones in noise, with a near-silent stretch and a loud burst."""
+    hop = C.HOP_LENGTH
+    n = NETWORK_HOPS * hop
+    t = np.arange(n) / C.SAMPLE_RATE
+    x = 0.2 * np.sin(2 * math.pi * 220.0 * t) + 0.1 * np.sin(2 * math.pi * 1375.0 * t + 0.3)
+    x = x + 0.05 * rng.standard_normal(n)
+    x[30 * hop : 45 * hop] = 1e-4 * rng.standard_normal(15 * hop)
+    x[70 * hop : 76 * hop] *= 2.5
+    return _f32(x)
+
+
+def _stream_network(net: Any, x: torch.Tensor, emb: torch.Tensor | None, trace_frames: int) -> dict[str, Any]:
+    """Run ``net`` hop by hop over ``x`` [1, N]; returns wav, vad, conditioning and traces."""
+    hop = C.HOP_LENGTH
+    cond = net.condition(emb, batch=1)
+    state = net.init_state(1, dtype=torch.float64)
+    outs: list[torch.Tensor] = []
+    vads: list[torch.Tensor] = []
+    traces: dict[str, list[np.ndarray]] = {name: [] for name in NETWORK_TRACE_NAMES}
+    for index in range(x.shape[-1] // hop):
+        trace: dict[str, torch.Tensor] | None = {} if index < trace_frames else None
+        out, vad, state = net.step(x[:, index * hop : (index + 1) * hop], cond, state, trace=trace)
+        outs.append(out[0])
+        vads.append(vad[0])
+        if trace is not None:
+            for name in NETWORK_TRACE_NAMES:
+                value = trace[name][0].reshape(-1)
+                if value.is_complex():
+                    value = torch.view_as_real(value)  # interleaved (re, im), like the engine
+                traces[name].append(value.reshape(-1).numpy())
+    return {
+        "wav": torch.cat(outs).numpy(),
+        "vad": torch.stack(vads).numpy(),
+        "cond": cond,
+        "traces": {name: np.stack(values) for name, values in traces.items() if values},
+    }
+
+
+@torch.no_grad()
+def network_golden() -> dict[str, np.ndarray]:
+    """Hop-by-hop float64 reference of the golden network, in Personal and NULL modes."""
+    rng = _rng("network")
+    net64 = network_net().double()
+    x = _network_signal(rng)
+    emb = _f32(0.7 * rng.standard_normal(C.EMBEDDING_DIM))
+    x64 = torch.from_numpy(x.astype(np.float64))[None]
+    emb64 = torch.from_numpy(emb.astype(np.float64))[None]
+    personal = _stream_network(net64, x64, emb64, NETWORK_TRACE_FRAMES)
+    null = _stream_network(net64, x64, None, 0)
+    cond = personal["cond"]
+    out: dict[str, np.ndarray] = {
+        "dims": _i32([NETWORK_HOPS, NETWORK_TRACE_FRAMES]),
+        "x": x,
+        "embedding": emb,
+        "cond.pre_scale": _f32(cond.pre_scale[0].numpy()),
+        "cond.pre_shift": _f32(cond.pre_shift[0].numpy()),
+        "cond.post_scale": _f32(cond.post_scale[0].numpy()),
+        "cond.post_shift": _f32(cond.post_shift[0].numpy()),
+        "personal.wav": _f32(personal["wav"]),
+        "personal.vad": _f32(personal["vad"]),
+        "null.wav": _f32(null["wav"]),
+        "null.vad": _f32(null["vad"]),
+    }
+    for name, values in personal["traces"].items():
+        out[f"trace.{name}"] = _f32(values)
+    return out
+
+
+#: Golden name -> builder.
 GOLDENS: Final[dict[str, Callable[[], dict[str, np.ndarray]]]] = {
     "ringbuf": ringbuf_golden,
     "resampler": resampler_golden,
@@ -366,6 +504,15 @@ GOLDENS: Final[dict[str, Callable[[], dict[str, np.ndarray]]]] = {
     "gru": gru_golden,
     "matvec": matvec_golden,
     "weights_small": weights_small_tensors,
+    "network_model": network_model_tensors,
+    "network_partial": network_partial_tensors,
+    "network": network_golden,
+}
+
+#: Goldens that also get a ``<name>.json`` manifest (see :func:`write_goldens`).
+MANIFESTS: Final[dict[str, Callable[[bytes], dict[str, Any]]]] = {
+    "weights_small": weights_small_manifest,
+    "network_model": network_model_manifest,
 }
 
 
@@ -380,7 +527,7 @@ def build_golden(name: str) -> bytes:
 
 
 def write_goldens(out_dir: str | Path = DEFAULT_GOLDEN_DIR, names: Iterable[str] | None = None) -> list[Path]:
-    """Write ``<name>.emwb`` for each golden (and ``weights_small.json``); returns the paths."""
+    """Write ``<name>.emwb`` for each golden (and the :data:`MANIFESTS` JSON); returns the paths."""
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
@@ -389,9 +536,9 @@ def write_goldens(out_dir: str | Path = DEFAULT_GOLDEN_DIR, names: Iterable[str]
         path = out / f"{name}{B.BLOB_SUFFIX}"
         path.write_bytes(data)
         written.append(path)
-        if name == "weights_small":
+        if name in MANIFESTS:
             manifest = out / f"{name}{B.MANIFEST_SUFFIX}"
-            manifest.write_text(json.dumps(weights_small_manifest(data), indent=2) + "\n", encoding="utf-8")
+            manifest.write_text(json.dumps(MANIFESTS[name](data), indent=2) + "\n", encoding="utf-8")
             written.append(manifest)
     return written
 
@@ -442,7 +589,7 @@ def compare_goldens(
             problems.append(f"{name}: {exc}")
             continue
         problems.extend(_compare_blobs(name, B.unpack_blob(build_golden(name)), committed, tolerance))
-        if name == "weights_small":
+        if name in MANIFESTS:
             manifest_path = root / f"{name}{B.MANIFEST_SUFFIX}"
             try:
                 B.verify_manifest(B.read_manifest(manifest_path), committed_bytes)

@@ -1,0 +1,625 @@
+{
+  "format": "earmark-weights-blob",
+  "format_version": 1,
+  "contract_version": 1,
+  "contract_hash": "875b5abc86eafabb",
+  "blob_file": "network_model.emwb",
+  "blob_bytes": 65856,
+  "blob_sha256": "50018985422e4f377d6e81f24d43416cd87cd8a8bf3f3f75a9bd69002c71fa4a",
+  "blob_table_crc32": 8584188,
+  "blob_data_crc32": 922542715,
+  "created_by": "earmark.export.blob",
+  "random_weights": true,
+  "seed": 20260918,
+  "source": null,
+  "git_sha": null,
+  "torch_version": "2.14.0",
+  "model": {
+    "name": "golden-gru",
+    "config": {
+      "name": "golden-gru",
+      "body": "gru",
+      "hidden": 24,
+      "body_layers": 2,
+      "enc_channels": 4,
+      "enc_groups": 2,
+      "enc_proj_groups": 2,
+      "film_rank": 8,
+      "df_head_groups": 4,
+      "ssm_state": 64,
+      "ssm_expansion": 176
+    },
+    "params": 14901,
+    "state_fields": [
+      "in_buf",
+      "ola_buf",
+      "erb_norm",
+      "spec_norm",
+      "enc_erb_prev",
+      "enc_df_prev",
+      "df_hist",
+      "body"
+    ],
+    "state_layout": {
+      "in_buf": [
+        160
+      ],
+      "ola_buf": [
+        160
+      ],
+      "erb_norm": [
+        32
+      ],
+      "spec_norm": [
+        64
+      ],
+      "enc_erb_prev": [
+        1,
+        32
+      ],
+      "enc_df_prev": [
+        2,
+        64
+      ],
+      "df_hist": [
+        2,
+        64,
+        2
+      ],
+      "body": [
+        2,
+        24
+      ]
+    },
+    "state_bytes_per_stream": 3520,
+    "output_delay_samples": 160,
+    "model_frame_offset": 1
+  },
+  "norm_init": {
+    "erb_norm_db": [
+      -9.897000312805176,
+      -10.864742279052734,
+      -11.832484245300293,
+      -12.800226211547852,
+      -13.76796817779541,
+      -14.735710144042969,
+      -15.703452110290527,
+      -16.671194076538086,
+      -17.638935089111328,
+      -18.606678009033203,
+      -19.574419021606445,
+      -20.54216194152832,
+      -21.509902954101562,
+      -22.477645874023438,
+      -23.44538688659668,
+      -24.413129806518555,
+      -25.380870819091797,
+      -26.348613739013672,
+      -27.316354751586914,
+      -28.28409767150879,
+      -29.25183868408203,
+      -30.219581604003906,
+      -31.18732261657715,
+      -32.15506362915039,
+      -33.122806549072266,
+      -34.09054946899414,
+      -35.058292388916016,
+      -36.026031494140625,
+      -36.9937744140625,
+      -37.961517333984375,
+      -38.92926025390625,
+      -39.89699935913086
+    ],
+    "spec_norm": [
+      0.3199999928474426,
+      0.31542858481407166,
+      0.3108571469783783,
+      0.30628570914268494,
+      0.3017142713069916,
+      0.2971428632736206,
+      0.29257142543792725,
+      0.2879999876022339,
+      0.2834285795688629,
+      0.27885714173316956,
+      0.2742857038974762,
+      0.2697142958641052,
+      0.26514285802841187,
+      0.2605714201927185,
+      0.25600001215934753,
+      0.2514285743236542,
+      0.24685713648796082,
+      0.24228571355342865,
+      0.23771429061889648,
+      0.23314285278320312,
+      0.22857142984867096,
+      0.2240000069141388,
+      0.21942856907844543,
+      0.21485714614391327,
+      0.2102857083082199,
+      0.20571428537368774,
+      0.20114286243915558,
+      0.19657142460346222,
+      0.19200000166893005,
+      0.1874285787343979,
+      0.18285714089870453,
+      0.17828571796417236,
+      0.173714280128479,
+      0.16914285719394684,
+      0.16457143425941467,
+      0.1599999964237213,
+      0.15542857348918915,
+      0.1508571356534958,
+      0.14628571271896362,
+      0.14171428978443146,
+      0.1371428519487381,
+      0.13257142901420593,
+      0.12800000607967377,
+      0.12342856824398041,
+      0.11885714530944824,
+      0.11428571492433548,
+      0.10971428453922272,
+      0.10514285415410995,
+      0.10057143121957779,
+      0.09600000083446503,
+      0.09142857044935226,
+      0.0868571400642395,
+      0.08228571712970734,
+      0.07771428674459457,
+      0.07314285635948181,
+      0.06857142597436905,
+      0.06400000303983688,
+      0.05942857265472412,
+      0.05485714226961136,
+      0.050285715609788895,
+      0.04571428522467613,
+      0.04114285856485367,
+      0.036571428179740906,
+      0.03200000151991844
+    ]
+  },
+  "conventions": {
+    "framing": "Frame t is the previous hop (state in_buf, initially zeros) followed by the current hop: 320 samples. Output lags input by output_delay_samples, and model frame t is contract frame t - model_frame_offset.",
+    "analysis": "X = rfft(frame * w, n=320), w[n] = sin(pi n / 320); forward DFT unscaled",
+    "synthesis": "y = irfft(Y, n=320) * w (inverse scaled 1/320); out = y[:160] + ola; ola = y[160:]",
+    "erb_features": "db = 10*log10(mean |X|^2 over the band + power_eps); m = a*m + (1-a)*db (update first, a = NORM_ALPHA); feature = (db - m) / erb_feature_scale_db",
+    "unit_norm": "s = a*s + (1-a)*|X| on bins 0..DF_BINS-1 (update first); feature = X / sqrt(s)",
+    "power_eps": 1e-10,
+    "erb_feature_scale_db": 40.0,
+    "norm_alpha": 0.9900498337491681,
+    "encoder": "Two branches. erb_enc: input [1 ch, 32 bins]; df_enc: input [2 ch (re, im), 64 bins]. Conv2d weights [out, in/groups, kt, kf]. first: kernel (2, 3), kt index 0 multiplies frame t-1 and index 1 frame t (state enc_*_prev), frequency padding 1, ungrouped. down.*: kernel (1, 3), frequency stride 2, padding 1, groups 2. ReLU after every conv. ERB branch 32->16->8 bins, low band 64->32->16->8. Each branch is flattened channel-major (c * bins + f), then ERB features precede low-band features.",
+    "grouped_linear": "weight [G, out/G, in/G]; input g*in/G + i feeds group g and output g*out/G + o comes from it; y = W x + bias",
+    "enc_proj": "GroupedLinear followed by ReLU",
+    "film": "e = L2-normalise(embedding, or conditioner.null_embedding when none); c = tanh(conditioner.proj(e)); (dg, b) = conditioner.pre(c) split in half (conditioner.post for post-FiLM); x * (1 + dg) + b. Computed once per embedding.",
+    "gru": "PyTorch nn.GRU. weight_ih_l{k} [3H, in], weight_hh_l{k} [3H, H], rows stacked as gates r, z, n. r = sigmoid(W_ir x + b_ir + W_hr h + b_hr); z likewise; n = tanh(W_in x + b_in + r * (W_hn h + b_hn)); h' = (1 - z) * n + z * h",
+    "heads": "vad_head reads the body output before post-FiLM (vad = sigmoid(logit)); gain_head (sigmoid, 32 ERB gains) and df_head read the post-FiLM features",
+    "gains": "ERB gains expand rectangularly over ERB_WIDTHS bins and multiply X before the deep filter",
+    "deep_filter": "df_head output (DF_BINS*DF_ORDER*2 values) is laid out [bin, tap, re/im]; taps = tanh(raw) plus 1 on the real part of tap 0; Y[t,k] = sum_i C_i[t,k] X_gained[t-i,k] for k < DF_BINS (history oldest first in state df_hist); bins >= DF_BINS keep X_gained",
+    "embedding_dim": 256
+  },
+  "tensors": [
+    {
+      "name": "erb_enc.first.weight",
+      "dtype": "float32",
+      "shape": [
+        4,
+        1,
+        2,
+        3
+      ],
+      "offset": 0,
+      "numel": 24,
+      "crc32": 3080112178
+    },
+    {
+      "name": "erb_enc.first.bias",
+      "dtype": "float32",
+      "shape": [
+        4
+      ],
+      "offset": 128,
+      "numel": 4,
+      "crc32": 3231427722
+    },
+    {
+      "name": "erb_enc.down.0.weight",
+      "dtype": "float32",
+      "shape": [
+        4,
+        2,
+        1,
+        3
+      ],
+      "offset": 192,
+      "numel": 24,
+      "crc32": 584082394
+    },
+    {
+      "name": "erb_enc.down.0.bias",
+      "dtype": "float32",
+      "shape": [
+        4
+      ],
+      "offset": 320,
+      "numel": 4,
+      "crc32": 343201433
+    },
+    {
+      "name": "erb_enc.down.1.weight",
+      "dtype": "float32",
+      "shape": [
+        4,
+        2,
+        1,
+        3
+      ],
+      "offset": 384,
+      "numel": 24,
+      "crc32": 3944638751
+    },
+    {
+      "name": "erb_enc.down.1.bias",
+      "dtype": "float32",
+      "shape": [
+        4
+      ],
+      "offset": 512,
+      "numel": 4,
+      "crc32": 3979029631
+    },
+    {
+      "name": "df_enc.first.weight",
+      "dtype": "float32",
+      "shape": [
+        4,
+        2,
+        2,
+        3
+      ],
+      "offset": 576,
+      "numel": 48,
+      "crc32": 737891515
+    },
+    {
+      "name": "df_enc.first.bias",
+      "dtype": "float32",
+      "shape": [
+        4
+      ],
+      "offset": 768,
+      "numel": 4,
+      "crc32": 2947496245
+    },
+    {
+      "name": "df_enc.down.0.weight",
+      "dtype": "float32",
+      "shape": [
+        4,
+        2,
+        1,
+        3
+      ],
+      "offset": 832,
+      "numel": 24,
+      "crc32": 2950126582
+    },
+    {
+      "name": "df_enc.down.0.bias",
+      "dtype": "float32",
+      "shape": [
+        4
+      ],
+      "offset": 960,
+      "numel": 4,
+      "crc32": 2536689681
+    },
+    {
+      "name": "df_enc.down.1.weight",
+      "dtype": "float32",
+      "shape": [
+        4,
+        2,
+        1,
+        3
+      ],
+      "offset": 1024,
+      "numel": 24,
+      "crc32": 3267505999
+    },
+    {
+      "name": "df_enc.down.1.bias",
+      "dtype": "float32",
+      "shape": [
+        4
+      ],
+      "offset": 1152,
+      "numel": 4,
+      "crc32": 1090296992
+    },
+    {
+      "name": "df_enc.down.2.weight",
+      "dtype": "float32",
+      "shape": [
+        4,
+        2,
+        1,
+        3
+      ],
+      "offset": 1216,
+      "numel": 24,
+      "crc32": 1361290859
+    },
+    {
+      "name": "df_enc.down.2.bias",
+      "dtype": "float32",
+      "shape": [
+        4
+      ],
+      "offset": 1344,
+      "numel": 4,
+      "crc32": 256690804
+    },
+    {
+      "name": "enc_proj.weight",
+      "dtype": "float32",
+      "shape": [
+        2,
+        12,
+        32
+      ],
+      "offset": 1408,
+      "numel": 768,
+      "crc32": 3122861464
+    },
+    {
+      "name": "enc_proj.bias",
+      "dtype": "float32",
+      "shape": [
+        24
+      ],
+      "offset": 4480,
+      "numel": 24,
+      "crc32": 3607904957
+    },
+    {
+      "name": "conditioner.null_embedding",
+      "dtype": "float32",
+      "shape": [
+        256
+      ],
+      "offset": 4608,
+      "numel": 256,
+      "crc32": 1262974135
+    },
+    {
+      "name": "conditioner.proj.weight",
+      "dtype": "float32",
+      "shape": [
+        8,
+        256
+      ],
+      "offset": 5632,
+      "numel": 2048,
+      "crc32": 1017487453
+    },
+    {
+      "name": "conditioner.proj.bias",
+      "dtype": "float32",
+      "shape": [
+        8
+      ],
+      "offset": 13824,
+      "numel": 8,
+      "crc32": 214702644
+    },
+    {
+      "name": "conditioner.pre.weight",
+      "dtype": "float32",
+      "shape": [
+        48,
+        8
+      ],
+      "offset": 13888,
+      "numel": 384,
+      "crc32": 3024581337
+    },
+    {
+      "name": "conditioner.pre.bias",
+      "dtype": "float32",
+      "shape": [
+        48
+      ],
+      "offset": 15424,
+      "numel": 48,
+      "crc32": 3787857672
+    },
+    {
+      "name": "conditioner.post.weight",
+      "dtype": "float32",
+      "shape": [
+        48,
+        8
+      ],
+      "offset": 15616,
+      "numel": 384,
+      "crc32": 374612814
+    },
+    {
+      "name": "conditioner.post.bias",
+      "dtype": "float32",
+      "shape": [
+        48
+      ],
+      "offset": 17152,
+      "numel": 48,
+      "crc32": 483216350
+    },
+    {
+      "name": "body.gru.weight_ih_l0",
+      "dtype": "float32",
+      "shape": [
+        72,
+        24
+      ],
+      "offset": 17344,
+      "numel": 1728,
+      "crc32": 2743591638
+    },
+    {
+      "name": "body.gru.weight_hh_l0",
+      "dtype": "float32",
+      "shape": [
+        72,
+        24
+      ],
+      "offset": 24256,
+      "numel": 1728,
+      "crc32": 988413838
+    },
+    {
+      "name": "body.gru.bias_ih_l0",
+      "dtype": "float32",
+      "shape": [
+        72
+      ],
+      "offset": 31168,
+      "numel": 72,
+      "crc32": 1958994152
+    },
+    {
+      "name": "body.gru.bias_hh_l0",
+      "dtype": "float32",
+      "shape": [
+        72
+      ],
+      "offset": 31488,
+      "numel": 72,
+      "crc32": 917002707
+    },
+    {
+      "name": "body.gru.weight_ih_l1",
+      "dtype": "float32",
+      "shape": [
+        72,
+        24
+      ],
+      "offset": 31808,
+      "numel": 1728,
+      "crc32": 1908101735
+    },
+    {
+      "name": "body.gru.weight_hh_l1",
+      "dtype": "float32",
+      "shape": [
+        72,
+        24
+      ],
+      "offset": 38720,
+      "numel": 1728,
+      "crc32": 3540839331
+    },
+    {
+      "name": "body.gru.bias_ih_l1",
+      "dtype": "float32",
+      "shape": [
+        72
+      ],
+      "offset": 45632,
+      "numel": 72,
+      "crc32": 3580322095
+    },
+    {
+      "name": "body.gru.bias_hh_l1",
+      "dtype": "float32",
+      "shape": [
+        72
+      ],
+      "offset": 45952,
+      "numel": 72,
+      "crc32": 2237559356
+    },
+    {
+      "name": "vad_head.weight",
+      "dtype": "float32",
+      "shape": [
+        1,
+        24
+      ],
+      "offset": 46272,
+      "numel": 24,
+      "crc32": 1549985201
+    },
+    {
+      "name": "vad_head.bias",
+      "dtype": "float32",
+      "shape": [
+        1
+      ],
+      "offset": 46400,
+      "numel": 1,
+      "crc32": 4048807753
+    },
+    {
+      "name": "gain_head.weight",
+      "dtype": "float32",
+      "shape": [
+        32,
+        24
+      ],
+      "offset": 46464,
+      "numel": 768,
+      "crc32": 3980487472
+    },
+    {
+      "name": "gain_head.bias",
+      "dtype": "float32",
+      "shape": [
+        32
+      ],
+      "offset": 49536,
+      "numel": 32,
+      "crc32": 264875707
+    },
+    {
+      "name": "df_head.weight",
+      "dtype": "float32",
+      "shape": [
+        4,
+        96,
+        6
+      ],
+      "offset": 49664,
+      "numel": 2304,
+      "crc32": 1191698691
+    },
+    {
+      "name": "df_head.bias",
+      "dtype": "float32",
+      "shape": [
+        384
+      ],
+      "offset": 58880,
+      "numel": 384,
+      "crc32": 496679135
+    },
+    {
+      "name": "const.erb_norm_init",
+      "dtype": "float32",
+      "shape": [
+        32
+      ],
+      "offset": 60416,
+      "numel": 32,
+      "crc32": 2574533678
+    },
+    {
+      "name": "const.spec_norm_init",
+      "dtype": "float32",
+      "shape": [
+        64
+      ],
+      "offset": 60544,
+      "numel": 64,
+      "crc32": 793466976
+    }
+  ]
+}

@@ -15,7 +15,7 @@ vendored code is pocketfft (header only) and, for the tests, Catch2. See
 
 `make engine` runs the same three steps. Sanitizers: add `-DEARMARK_ASAN=ON
 -DEARMARK_UBSAN=ON` and use a separate build directory, for example
-`engine/build-asan`. WASM: `engine/wasm/build.sh` (needs `emcc`; runs in GitHub
+`engine/build-asan`. WASM: `engine/wasm/build.sh` (needs `em++`; runs in GitHub
 Actions).
 
 ## Layout
@@ -32,18 +32,24 @@ Actions).
 | `src/gru.*` | stacked GRU step (PyTorch gate order r, z, n) |
 | `src/matvec_f32.*` | fp32 dot/matvec; the WASM SIMD128 path and the scalar path share one summation order |
 | `src/weights.*` | `.emwb` blob parser, CRC-32 and manifest cross-check |
-| `src/state.*` | fixed-size per-stream state, the prefix of `earmark.model.stream.STATE_FIELDS` |
-| `src/engine.cpp` | the C API over the signal path |
+| `src/network.*` | the network for one hop: both conv encoders, FiLM, the GRU body, VAD / gain / deep-filter heads, and the deep filter; binds the blob by `state_dict` name and reads every size from the tensor shapes |
+| `src/state.*` | fixed-size per-stream state, `earmark.model.stream.STATE_FIELDS` except the GRU state (which lives in the network's arena) |
+| `src/engine.cpp` | the C API over the signal path and the network |
 | `tests/` | Catch2 tests against the Python goldens (`tests/goldens/`, regenerate with `python -m earmark.export.golden`) plus the allocation counter |
 | `wasm/build.sh` | Emscripten build: `-sSTANDALONE_WASM --no-entry`, fixed memory, SIMD128 |
 
-## Status (week 1)
+## Status (week 2)
 
-The signal path runs end to end at full cost: resampling, WOLA, ERB and low-band
-normalisation, synthesis. The network (encoder, FiLM, GRU body, heads, deep filter) is
-not wired into `em_process` yet: its gains are fixed at 1 and the VAD output is 0.
-The GRU step and matvec kernels are implemented and golden-tested, ready to be wired
-in.
+`em_process` runs the whole model: resampling, WOLA, ERB and low-band normalisation,
+the network (encoders, FiLM, GRU body, heads), ERB gains, the deep filter and
+synthesis. `tests/test_network.cpp` checks every layer and the output audio and VAD
+against PyTorch (`EarmarkNet.step` in float64) on a tiny random-weight GRU model; the
+errors are about 1e-7, the same as PyTorch's own float32 run. The WASM smoke test makes
+the same check inside WebAssembly.
+
+Only GRU bodies (M, M-256, S-GRU) are implemented; `em_create` refuses an S-SSM blob.
+A blob with no network tensors at all still loads and runs the signal path alone
+(`em_has_network()` returns 0), which the signal-path tests use.
 
 ## Ownership
 
