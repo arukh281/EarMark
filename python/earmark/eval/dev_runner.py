@@ -54,7 +54,7 @@ import sys
 import time
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final, Literal, Protocol
@@ -81,7 +81,9 @@ from earmark.data.synth_bench import (
 )
 from earmark.eval.bargein import (
     BargeInCounts,
+    GateConfig,
     binarize,
+    gate_frames,
     matched_threshold,
     pool_counts,
     score_bargein,
@@ -785,12 +787,42 @@ def _bargein_fields(counts: BargeInCounts) -> dict[str, Any]:
     return fields
 
 
-def apply_threshold(items: Sequence[ItemResult], threshold: float) -> None:
-    """Score barge-ins of every item at ``threshold`` (adds ``bargein_*`` fields to its row)."""
+def apply_threshold(
+    items: Sequence[ItemResult], threshold: float, gate: GateConfig | None = None
+) -> None:
+    """Score barge-ins of every item (adds ``bargein_*`` fields to its row).
+
+    Frames are decided by ``scores >= threshold``, or by ``gate`` when one is given (the
+    gate's own attack replaces ``threshold``). The reference onsets are unaffected either way.
+    """
+    config = gate if gate is not None else GateConfig(attack=float(threshold))
     for it in items:
-        counts = score_bargein(binarize(it.vad, threshold), it.labels)
+        counts = score_bargein(gate_frames(it.vad, config), it.labels)
         it.bargein = counts
         it.row.update(_bargein_fields(counts))
+
+
+def save_frames(items: Sequence[ItemResult], path: Path) -> Path:
+    """Write every item's VAD scores and reference activity to one ``.npz``.
+
+    Items are concatenated with an offsets array, because they differ in length. This is
+    what :mod:`earmark.eval.tune_gate` reads, so gate settings can be searched without
+    running the model again.
+    """
+    usable = [it for it in items if it.labels.size]
+    scores = np.concatenate([it.vad for it in usable]) if usable else np.zeros(0, np.float32)
+    labels = np.concatenate([it.labels for it in usable]) if usable else np.zeros(0, bool)
+    lengths = [int(it.labels.size) for it in usable]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(
+        path,
+        scores=scores.astype(np.float32),
+        labels=labels.astype(bool),
+        offsets=np.cumsum([0, *lengths], dtype=np.int64),
+        item_ids=np.array([str(it.row.get("item_id", index)) for index, it in enumerate(usable)]),
+        frame_rate_hz=np.int64(C.FRAME_RATE_HZ),
+    )
+    return path
 
 
 def _rate_ci(
@@ -968,8 +1000,13 @@ def score_run(
     threshold_level: ThresholdLevel = "frame",
     n_resamples: int = DEFAULT_RESAMPLES,
     seed: int = 0,
+    gate: GateConfig | None = None,
 ) -> dict[str, Any]:
-    """Choose the threshold, score barge-ins and summarise (the CLI's scoring step)."""
+    """Choose the threshold, score barge-ins and summarise (the CLI's scoring step).
+
+    ``gate`` replaces plain thresholding with hysteresis and gap bridging; its attack is
+    the chosen threshold, so the threshold is still matched the same way.
+    """
     note = None
     threshold: dict[str, Any] | None
     if vad_threshold is not None:
@@ -982,7 +1019,11 @@ def score_run(
         except ValueError as exc:
             threshold, note = None, f"no barge-in scores: {exc}"
     if threshold is not None:
-        apply_threshold(run.items, float(threshold["threshold"]))
+        chosen = float(threshold["threshold"])
+        config = None if gate is None else replace(gate, attack=chosen)
+        apply_threshold(run.items, chosen, config)
+        if config is not None:
+            threshold = {**threshold, "gate": config.as_dict()}
     summary = summarize_run(run, threshold=threshold, n_resamples=n_resamples, seed=seed)
     if note is not None:
         summary["bargein_note"] = note
@@ -1342,6 +1383,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     scoring.add_argument("--threshold-level", choices=("frame", "onset"), default="frame")
     scoring.add_argument(
+        "--gate-release",
+        type=float,
+        default=None,
+        help="hysteresis: hold an open run while the score stays at or above this (<= the threshold)",
+    )
+    scoring.add_argument(
+        "--gate-max-gap-frames",
+        type=int,
+        default=0,
+        help="hysteresis: frames below the release threshold an open run survives (10 ms each)",
+    )
+    scoring.add_argument(
         "--resamples", type=int, default=DEFAULT_RESAMPLES, help="bootstrap resamples"
     )
 
@@ -1354,6 +1407,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     output.add_argument(
         "--rows-out", type=Path, default=None, help="per-mixture rows (JSONL, numbers only)"
+    )
+    output.add_argument(
+        "--frames-out",
+        type=Path,
+        default=None,
+        help="per-frame VAD scores and reference activity (.npz), for tuning the gate offline",
     )
     output.add_argument("--runs-log", type=Path, default=DEFAULT_RUNS_PATH)
     output.add_argument("--no-log", action="store_true", help="do not append to the run log")
@@ -1463,12 +1522,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         device=device,
         progress=_progress(),
     )
+    gate = None
+    if args.gate_release is not None or args.gate_max_gap_frames:
+        # attack is filled in from the chosen threshold inside score_run.
+        gate = GateConfig(attack=1.0, release=args.gate_release, max_gap_frames=args.gate_max_gap_frames)
     scored = score_run(
         run,
         vad_threshold=args.vad_threshold,
         target_recall=args.target_recall,
         threshold_level=args.threshold_level,
         n_resamples=args.resamples,
+        gate=gate,
     )
     if embed is None:
         embeddings_source = "null (denoise mode)"
@@ -1508,6 +1572,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         with args.rows_out.open("w", encoding="utf-8") as fh:
             for it in run.items:
                 fh.write(json.dumps(to_jsonable(it.row), allow_nan=False) + "\n")
+    if args.frames_out is not None:
+        save_frames(run.items, args.frames_out)
     if args.embeddings_out is not None and run.embeddings:
         save_enrolment_embeddings(
             args.embeddings_out, specs, run.embeddings, encoder=embeddings_source

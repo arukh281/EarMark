@@ -30,7 +30,7 @@ from __future__ import annotations
 import math
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
-from typing import Literal, NamedTuple
+from typing import Any, Literal, NamedTuple
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
@@ -40,16 +40,22 @@ from earmark import constants as C
 __all__ = [
     "DEFAULT_MAX_DELAY_FRAMES",
     "BargeInCounts",
+    "FrameGate",
     "FrozenThreshold",
+    "GateChoice",
+    "GateConfig",
     "Onset",
     "OnsetDetector",
     "binarize",
     "detect_onsets",
     "frame_recall_threshold",
+    "gate_frames",
     "matched_threshold",
     "onset_recall_threshold",
     "pool_counts",
     "score_bargein",
+    "score_gate",
+    "tune_gate",
 ]
 
 #: Detections confirmed more than 1 s after the reference onset do not count as hits.
@@ -78,6 +84,95 @@ def binarize(scores: ArrayLike, threshold: float) -> BoolArray:
     if s.ndim != 1:
         raise ValueError(f"scores must be 1-D, got shape {s.shape}")
     return s >= threshold
+
+
+@dataclass(frozen=True)
+class GateConfig:
+    """How VAD probabilities become frame decisions, before the onset rule sees them.
+
+    The event definition is fixed by the contract: an onset needs ``BARGEIN_MIN_ACTIVE_FRAMES``
+    (200 ms) of *consecutive* active frames, so one dipped frame inside that window restarts
+    the count and the onset is missed. Speech dips all the time (stops, plosives, a breath),
+    which is why plain thresholding loses onsets rather than reporting them late.
+
+    This is the usual fix, and it changes only the detector, never the reference:
+
+    * ``attack``: a run starts when the score reaches this.
+    * ``release``: an open run stays open while the score holds at or above this (a Schmitt
+      trigger). Defaults to ``attack``, i.e. no hysteresis.
+    * ``max_gap_frames``: an open run survives up to this many consecutive frames below
+      ``release``, and those frames are marked active too (a hangover). Defaults to 0.
+
+    ``GateConfig(attack=t)`` is exactly ``scores >= t``.
+    """
+
+    attack: float
+    release: float | None = None
+    max_gap_frames: int = 0
+
+    def __post_init__(self) -> None:
+        if self.release is not None and self.release > self.attack:
+            raise ValueError(f"release {self.release} must be at or below attack {self.attack}")
+        if self.max_gap_frames < 0:
+            raise ValueError(f"max_gap_frames must be >= 0, got {self.max_gap_frames}")
+
+    @property
+    def release_threshold(self) -> float:
+        return self.attack if self.release is None else self.release
+
+    @property
+    def is_plain(self) -> bool:
+        """True when this is a bare threshold, so the fast path applies."""
+        return self.max_gap_frames == 0 and self.release_threshold == self.attack
+
+    def as_dict(self) -> dict[str, float | int]:
+        return {"attack": self.attack, "release": self.release_threshold, "max_gap_frames": self.max_gap_frames}
+
+
+class FrameGate:
+    """Streaming form of :class:`GateConfig`: one score in, one decision out, O(1) state.
+
+    This is the reference for the engine and the web Gate markers. Bridged frames are
+    reported active as they happen, so the decision is causal: nothing is revised later.
+    """
+
+    __slots__ = ("_gap", "_open", "config")
+
+    def __init__(self, config: GateConfig) -> None:
+        self.config = config
+        self._open = False
+        self._gap = 0
+
+    def reset(self) -> None:
+        self._open = False
+        self._gap = 0
+
+    def push(self, score: float) -> bool:
+        """The decision for one frame."""
+        if score >= self.config.attack:
+            self._open = True
+            self._gap = 0
+            return True
+        if self._open and score >= self.config.release_threshold:
+            self._gap = 0
+            return True
+        if self._open and self._gap < self.config.max_gap_frames:
+            self._gap += 1  # a short dip: hold the run open and call it active
+            return True
+        self._open = False
+        self._gap = 0
+        return False
+
+
+def gate_frames(scores: ArrayLike, config: GateConfig) -> BoolArray:
+    """Frame decisions for a whole item; identical to :class:`FrameGate` frame by frame."""
+    s = np.asarray(scores, dtype=np.float64)
+    if s.ndim != 1:
+        raise ValueError(f"scores must be 1-D, got shape {s.shape}")
+    if config.is_plain:
+        return s >= config.attack
+    gate = FrameGate(config)
+    return np.fromiter((gate.push(v) for v in s), dtype=bool, count=s.size)
 
 
 def detect_onsets(
@@ -349,6 +444,90 @@ def onset_recall_threshold(
     t = float(candidates[-1])
     counts = pool_counts(score_bargein(s >= t, lab, max_delay_frames=max_delay_frames) for s, lab in pairs)
     return FrozenThreshold(t, "onset", target_recall, counts.onset_recall, n_ref)
+
+
+@dataclass(frozen=True)
+class GateChoice:
+    """A gate setting and what it scored on the split it was chosen on."""
+
+    config: GateConfig
+    onset_recall: float
+    false_per_minute: float
+    frame_recall: float
+    median_delay_ms: float
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            **self.config.as_dict(),
+            "onset_recall": self.onset_recall,
+            "false_barge_ins_per_min": self.false_per_minute,
+            "frame_recall": self.frame_recall,
+            "median_onset_delay_ms": self.median_delay_ms,
+        }
+
+
+def score_gate(
+    scores: Sequence[ArrayLike],
+    labels: Sequence[ArrayLike],
+    config: GateConfig,
+    *,
+    max_delay_frames: int = DEFAULT_MAX_DELAY_FRAMES,
+) -> BargeInCounts:
+    """Pooled barge-in tallies for one gate setting over every item."""
+    pairs = _pairs(scores, labels)
+    return pool_counts(
+        score_bargein(gate_frames(s, config), lab, max_delay_frames=max_delay_frames) for s, lab in pairs
+    )
+
+
+def tune_gate(
+    scores: Sequence[ArrayLike],
+    labels: Sequence[ArrayLike],
+    *,
+    max_false_per_minute: float,
+    attacks: Sequence[float] | None = None,
+    releases: Sequence[float] | None = None,
+    max_gap_frames: Sequence[int] = (0, 2, 4, 8),
+    n_candidates: int = 16,
+    max_delay_frames: int = DEFAULT_MAX_DELAY_FRAMES,
+) -> tuple[GateChoice, list[GateChoice]]:
+    """Search gate settings for the best onset recall within a false-barge-in budget.
+
+    Returns ``(best, every setting scored)``. ``best`` is the highest onset recall whose
+    pooled false barge-ins per minute stay at or below ``max_false_per_minute``, breaking
+    ties on the median onset delay; when nothing fits the budget, the setting with the
+    fewest false barge-ins is returned instead, so a caller always gets an answer to
+    report. Freeze the result on dev and apply it unchanged to test.
+    """
+    pairs = _pairs(scores, labels)
+    if not pairs:
+        raise ValueError("no items to tune on")
+    pool = np.concatenate([s for s, _ in pairs])
+    if attacks is None:
+        # Quantiles of the scores, skipping the extremes where every item is all on or off.
+        attacks = list(np.unique(np.quantile(pool, np.linspace(0.5, 0.999, n_candidates))))
+    results: list[GateChoice] = []
+    for attack in attacks:
+        release_grid = releases if releases is not None else (attack, 0.7 * attack, 0.4 * attack)
+        for release in sorted({min(float(r), float(attack)) for r in release_grid}):
+            for gap in sorted(set(int(g) for g in max_gap_frames)):
+                config = GateConfig(attack=float(attack), release=release, max_gap_frames=gap)
+                counts = score_gate(scores, labels, config, max_delay_frames=max_delay_frames)
+                results.append(
+                    GateChoice(
+                        config=config,
+                        onset_recall=counts.onset_recall,
+                        false_per_minute=counts.false_per_minute,
+                        frame_recall=counts.frame_recall,
+                        median_delay_ms=counts.median_delay_ms,
+                    )
+                )
+    within = [r for r in results if r.false_per_minute <= max_false_per_minute]
+    if within:
+        best = max(within, key=lambda r: (r.onset_recall, -r.median_delay_ms))
+    else:
+        best = min(results, key=lambda r: r.false_per_minute)
+    return best, results
 
 
 def matched_threshold(
