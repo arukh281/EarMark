@@ -114,7 +114,9 @@ Every source and its licence is listed in [docs/DATA_AND_LICENSES.md](docs/DATA_
 - [x] **Week 1:** signal contract, data pipeline, three models, trainer, engine skeleton, evaluation harness and CI
 - [x] The pilot model passes the week-1 dev check
 - [x] The full main model (M-v1) trains to completion and passes the dev check
-- [ ] **Week 2:** faster onset detection, the network wired into the engine, and the in-browser demo
+- [x] The model runs inside the C++ / WebAssembly engine, matching PyTorch to about 1e-7
+- [x] A browser demo: microphone in, your voice out, with enrolment from five seconds ([`web/`](web/README.md))
+- [ ] **Week 2:** faster onset detection, then the hosted demo
 - [ ] **Week 3:** evaluation on real room recordings
 - [ ] **Week 4:** release with a results table, a model card and a Hugging Face Space demo
 

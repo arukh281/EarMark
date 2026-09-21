@@ -10,8 +10,9 @@ enrolment pool (noise, RIR, EQ, Opus round trip). The mixer samples one per exam
   same scale from Kaggle, from the dev runner and from the browser's enrolment.
 * :class:`StubSpeakerEncoder` is a deterministic, weight-free stand-in for tests.
 * :class:`WeSpeakerOnnxEncoder` wraps the real model: the ONNX release on the Hub behind
-  a Kaldi fbank front end (torchaudio). It imports onnxruntime and torchaudio lazily
-  and runs only in the Kaggle notebook.
+  a Kaldi fbank front end. It imports onnxruntime lazily, and uses torchaudio for the
+  front end when it is installed (Kaggle) or :mod:`earmark.data.fbank` when it is not
+  (the demo server on a torch release torchaudio has no wheel for).
 * :class:`SpeakerEmbeddings` is the ``.npz`` table the mixer reads.
 """
 
@@ -182,10 +183,21 @@ class WeSpeakerOnnxEncoder:
 
     @staticmethod
     def fbank(wave: torch.Tensor) -> torch.Tensor:
-        """Mean-normalised Kaldi fbank ``[frames, 80]`` of one 16 kHz waveform ``[T]``."""
-        from torchaudio.compliance import kaldi
+        """Mean-normalised Kaldi fbank ``[frames, 80]`` of one 16 kHz waveform ``[T]``.
 
-        feats = kaldi.fbank(wave.float()[None] * WAVE_SCALE, **KALDI_FBANK)
+        Uses torchaudio when it is installed (bit-identical to the training-time
+        embeddings) and otherwise :mod:`earmark.data.fbank`, which reproduces it to
+        float32 rounding (``tests/data/test_fbank.py``).
+        """
+        scaled = wave.float()[None] * WAVE_SCALE
+        try:
+            from torchaudio.compliance import kaldi
+
+            feats = kaldi.fbank(scaled, **KALDI_FBANK)
+        except ImportError:
+            from earmark.data.fbank import kaldi_fbank
+
+            feats = kaldi_fbank(scaled, **KALDI_FBANK)
         return feats - feats.mean(dim=0, keepdim=True)
 
     @torch.no_grad()
