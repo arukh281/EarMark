@@ -1,10 +1,10 @@
-/* The demo page: the README banner's palette, one column, no framework. */
+/* Earmark demo: one column, three panels, no prose. */
 :root {
   --ink: #0f1318;
-  --panel: #151b22;
-  --line: #222c36;
-  --text: #e6ebf1;
-  --muted: #8b99a8;
+  --panel: #161c23;
+  --line: #242f3a;
+  --text: #e8edf3;
+  --muted: #8593a2;
   --amber: #f5b942;
   --good: #7ddba4;
   --bad: #ff8a7a;
@@ -15,89 +15,88 @@
 
 body {
   margin: 0;
-  padding: 48px 16px 64px;
-  background: radial-gradient(1200px 600px at 70% -10%, #1a2028 0%, var(--ink) 60%);
+  padding: 56px 20px 40px;
+  background: var(--ink);
   color: var(--text);
-  font: 16px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
-main { max-width: 940px; margin: 0 auto; display: grid; gap: 24px; }
+main { max-width: 680px; margin: 0 auto; display: grid; gap: 18px; }
 
-.kicker {
-  margin: 0 0 4px;
-  color: var(--amber);
-  font: 600 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-}
-
-h1 { margin: 0; font-size: 44px; letter-spacing: -0.02em; }
+header { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+h1 { margin: 0; font-size: 30px; letter-spacing: -0.02em; }
 h1 span { color: var(--amber); }
 
-.lede { margin: 8px 0 0; max-width: 62ch; color: var(--muted); }
-
 .status {
-  margin: 16px 0 0;
-  padding: 10px 14px;
-  border: 1px solid var(--line);
-  border-left: 3px solid var(--muted);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.02);
-  font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  margin: 0;
+  color: var(--muted);
+  font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-align: right;
 }
-.status.good { border-left-color: var(--good); }
-.status.bad { border-left-color: var(--bad); color: var(--bad); }
+.status.good { color: var(--good); }
+.status.bad { color: var(--bad); }
 
 .panel {
-  padding: 20px;
+  padding: 18px;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--panel);
   display: grid;
-  gap: 18px;
+  gap: 16px;
 }
 
-.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.bar-row { display: flex; flex-wrap: wrap; gap: 8px; }
 
 button {
-  padding: 10px 16px;
+  padding: 9px 14px;
   border: 1px solid var(--line);
-  border-radius: 6px;
-  background: #1b232c;
+  border-radius: 7px;
+  background: #1d252e;
   color: var(--text);
   font: 500 14px/1 inherit;
   cursor: pointer;
+  transition: border-color 120ms, color 120ms, background 120ms;
 }
-button:hover:not(:disabled) { border-color: #3a4756; }
-button:disabled { opacity: 0.45; cursor: not-allowed; }
-button.primary { background: var(--amber); border-color: var(--amber); color: #15181d; font-weight: 700; }
-button.mode.is-on { border-color: var(--amber); color: var(--amber); }
+button:hover:not(:disabled) { border-color: #3c4b5c; }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+button.primary { background: var(--amber); border-color: var(--amber); color: #131820; font-weight: 650; }
+button.primary:hover:not(:disabled) { background: #ffc85a; }
+button.ghost { background: transparent; }
 button.is-on { border-color: var(--amber); color: var(--amber); }
 
-.hint { color: var(--muted); font-size: 13px; }
+/* Mode switch */
+.segmented { display: inline-flex; padding: 3px; border: 1px solid var(--line); border-radius: 8px; width: fit-content; }
+.segmented button { border: 0; background: transparent; padding: 7px 18px; border-radius: 6px; color: var(--muted); }
+.segmented button.is-on { background: #26313d; color: var(--amber); }
+.segmented button:hover:not(:disabled):not(.is-on) { color: var(--text); }
 
-.meters { display: grid; gap: 12px; }
-.meter { display: grid; grid-template-columns: 150px 1fr; align-items: center; gap: 12px; }
-.meter label { color: var(--muted); font-size: 13px; }
-.bar { height: 10px; border-radius: 999px; background: #10161c; overflow: hidden; }
-.bar span { display: block; height: 100%; width: 0; background: #566373; transition: width 80ms linear; }
-.bar.out span { background: var(--amber); }
-.bar.vad span { background: var(--good); }
+.meters { display: grid; gap: 8px; }
+.meter { display: grid; grid-template-columns: 44px 1fr; align-items: center; gap: 12px; }
+.meter span { color: var(--muted); font-size: 12px; }
+.bar { height: 6px; border-radius: 999px; background: #0e141a; overflow: hidden; }
+.bar i { display: block; height: 100%; width: 0; background: #4e5d6e; transition: width 80ms linear; }
+.bar.out i { background: var(--amber); }
+.bar.vad i { background: var(--good); }
 
-.compare { display: grid; gap: 18px; }
-figure { margin: 0; display: grid; gap: 8px; }
-figcaption { color: var(--muted); font-size: 13px; }
-canvas { width: 100%; height: 120px; background: #10161c; border: 1px solid var(--line); border-radius: 6px; }
-audio { width: 100%; }
+#record-panel { justify-items: start; }
+#record-panel .compare { width: 100%; }
+.compare { display: grid; gap: 14px; }
+figure { margin: 0; display: grid; gap: 6px; }
+figcaption { color: var(--muted); font-size: 12px; }
+canvas { width: 100%; height: 96px; background: #0e141a; border: 1px solid var(--line); border-radius: 7px; }
+audio { width: 100%; height: 32px; }
 
-footer { color: var(--muted); font-size: 13px; display: grid; gap: 14px; }
-dl { display: flex; flex-wrap: wrap; gap: 24px; margin: 0; }
-dl div { display: grid; gap: 2px; }
-dt { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; }
-dd { margin: 0; color: var(--text); font: 14px ui-monospace, SFMono-Regular, Menlo, monospace; }
-.note { margin: 0; max-width: 72ch; }
+footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  color: var(--muted);
+  font: 12px ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+footer .local { margin-left: auto; }
 
-@media (max-width: 620px) {
-  h1 { font-size: 34px; }
-  .meter { grid-template-columns: 1fr; gap: 4px; }
+@media (max-width: 560px) {
+  header { flex-direction: column; align-items: flex-start; gap: 6px; }
+  .status { text-align: left; }
+  footer .local { margin-left: 0; }
 }

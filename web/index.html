@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Earmark demo</title>
+    <title>Earmark</title>
     <link
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230f1318'/%3E%3Cpath d='M11 21c0-6 3-10 7-10s6 3 6 6-2 4-4 4' stroke='%23f5b942' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"
@@ -13,79 +13,53 @@
   <body>
     <main>
       <header>
-        <p class="kicker">Target-speaker voice isolation &middot; barge-in gating</p>
         <h1>earmark<span>.</span></h1>
-        <p class="lede">
-          Learn a voice from five seconds of speech, then remove everyone else &mdash; in the browser, in
-          10&nbsp;ms steps, with no lookahead.
-        </p>
-        <p class="status" id="status" role="status">Loading the engine&hellip;</p>
+        <p class="status" id="status">Loading&hellip;</p>
       </header>
 
       <section class="panel" id="controls" hidden>
-        <div class="row">
+        <div class="bar-row">
           <button id="start" class="primary">Start microphone</button>
-          <button id="file-btn">Use a sound file</button>
+          <button id="file-btn" class="ghost">Use a file</button>
           <input type="file" id="file" accept="audio/*" hidden />
-          <button id="enrol" disabled>Learn the voice (5&nbsp;s)</button>
-          <span class="hint">Wear headphones, or the speakers feed back into the microphone.</span>
+          <button id="enrol" disabled>Learn my voice</button>
         </div>
-        <p class="hint" id="source-hint">No sound yet. Start the microphone, or pick a recording to play through it.</p>
 
-        <div class="row modes" role="group" aria-label="Mode">
+        <div class="segmented" role="group" aria-label="Mode">
           <button class="mode" data-mode="off">Off</button>
           <button class="mode is-on" data-mode="denoise">Denoise</button>
           <button class="mode" data-mode="personal" disabled>Personal</button>
-          <span class="hint" id="mode-hint">Denoise removes noise for anyone. Personal keeps only your voice.</span>
         </div>
 
         <div class="meters">
-          <div class="meter">
-            <label>Microphone</label>
-            <div class="bar"><span id="in-bar"></span></div>
-          </div>
-          <div class="meter">
-            <label>Output</label>
-            <div class="bar out"><span id="out-bar"></span></div>
-          </div>
-          <div class="meter">
-            <label>You are speaking</label>
-            <div class="bar vad"><span id="vad-bar"></span></div>
-          </div>
+          <div class="meter"><span>Mic</span><div class="bar"><i id="in-bar"></i></div></div>
+          <div class="meter"><span>Out</span><div class="bar out"><i id="out-bar"></i></div></div>
+          <div class="meter"><span>Voice</span><div class="bar vad"><i id="vad-bar"></i></div></div>
         </div>
       </section>
 
       <section class="panel" id="record-panel" hidden>
-        <div class="row">
-          <button id="record">Record a comparison</button>
-          <span class="hint" id="record-hint">Records what the microphone hears and what Earmark outputs, together.</span>
-        </div>
+        <button id="record">Record comparison</button>
         <div class="compare" id="compare" hidden>
           <figure>
-            <figcaption>Microphone</figcaption>
-            <canvas id="wave-raw" width="900" height="120"></canvas>
+            <figcaption>Before</figcaption>
+            <canvas id="wave-raw" width="900" height="96"></canvas>
             <audio id="audio-raw" controls></audio>
           </figure>
           <figure>
-            <figcaption>Earmark</figcaption>
-            <canvas id="wave-wet" width="900" height="120"></canvas>
+            <figcaption>After</figcaption>
+            <canvas id="wave-wet" width="900" height="96"></canvas>
             <audio id="audio-wet" controls></audio>
           </figure>
         </div>
       </section>
 
       <footer>
-        <dl id="facts">
-          <div><dt>Model</dt><dd id="fact-model">&mdash;</dd></div>
-          <div><dt>Parameters</dt><dd id="fact-params">&mdash;</dd></div>
-          <div><dt>Engine latency</dt><dd id="fact-latency">&mdash;</dd></div>
-          <div><dt>Audio rate</dt><dd id="fact-rate">&mdash;</dd></div>
-        </dl>
-        <p class="note">
-          Everything runs on this machine: the weights are read from disk and the audio never leaves the page.
-          Enrolment is the one exception &mdash; the five-second clip goes to the local server to be turned into a
-          voice print, and is then dropped.
-        </p>
+        <span id="fact-model">&mdash;</span>
+        <span id="fact-params">&mdash;</span>
+        <span id="fact-latency">&mdash;</span>
+        <span id="fact-rate">&mdash;</span>
+        <span class="local">runs on this machine</span>
       </footer>
     </main>
     <script type="module" src="/src/app.js"></script>

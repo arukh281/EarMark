@@ -3,7 +3,7 @@
 // This file does the parts that must not happen on the audio thread: fetching the
 // engine and the weights, asking for the microphone, sending the five-second enrolment
 // clip to the local server, and drawing. The processing itself is in worklet.js.
-import { SAMPLE_RATE, HOP_LENGTH } from "/src/constants.js";
+import { SAMPLE_RATE } from "/src/constants.js";
 
 const ENROL_SECONDS = 5;
 const RECORD_SECONDS = 12;
@@ -14,16 +14,13 @@ const ui = {
   start: document.getElementById("start"),
   fileButton: document.getElementById("file-btn"),
   file: document.getElementById("file"),
-  sourceHint: document.getElementById("source-hint"),
   enrol: document.getElementById("enrol"),
   modes: Array.from(document.querySelectorAll(".mode")),
-  modeHint: document.getElementById("mode-hint"),
   inBar: document.getElementById("in-bar"),
   outBar: document.getElementById("out-bar"),
   vadBar: document.getElementById("vad-bar"),
   recordPanel: document.getElementById("record-panel"),
   record: document.getElementById("record"),
-  recordHint: document.getElementById("record-hint"),
   compare: document.getElementById("compare"),
   facts: {
     model: document.getElementById("fact-model"),
@@ -93,7 +90,7 @@ async function ensureEngine() {
 async function start() {
   ui.start.disabled = true;
   try {
-    setStatus("Asking for the microphone…");
+    setStatus("Starting…");
     state.stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         channelCount: 1,
@@ -106,10 +103,10 @@ async function start() {
     await ensureEngine();
     stopClip();
     state.context.createMediaStreamSource(state.stream).connect(state.node);
-    ui.sourceHint.textContent = "Listening to the microphone.";
+    setStatus("Listening", "good");
   } catch (error) {
     ui.start.disabled = false;
-    setStatus(`Could not start: ${error.message}`, "bad");
+    setStatus(error.message, "bad");
   }
 }
 
@@ -120,10 +117,10 @@ async function loadFile(file) {
     await ensureEngine();
     const bytes = await file.arrayBuffer();
     state.clip = await state.context.decodeAudioData(bytes);
-    ui.sourceHint.textContent = `${file.name}: ${state.clip.duration.toFixed(1)} s. Playing it through Earmark.`;
+    setStatus(`Playing ${file.name}`, "good");
     playClip();
   } catch (error) {
-    setStatus(`Could not read that file: ${error.message}`, "bad");
+    setStatus(error.message, "bad");
   }
 }
 
@@ -145,7 +142,7 @@ function stopClip() {
 
 function onWorkletMessage(msg) {
   if (msg.type === "ready") {
-    setStatus("Running. Speak, and switch modes to hear the difference.", "good");
+    setStatus("Listening", "good");
     ui.facts.latency.textContent = `${(msg.latencySeconds * 1000).toFixed(1)} ms`;
     ui.enrol.disabled = false;
     ui.recordPanel.hidden = false;
@@ -167,15 +164,6 @@ function setMode(mode) {
   state.mode = mode;
   for (const button of ui.modes) button.classList.toggle("is-on", button.dataset.mode === mode);
   state.node?.port.postMessage({ type: "mode", mode });
-  if (mode === "personal" && !state.enrolled) {
-    ui.modeHint.textContent = "Learn your voice first; until then Personal behaves like Denoise.";
-  } else if (mode === "personal") {
-    ui.modeHint.textContent = "Only your voice is kept. Other people and the TV are removed.";
-  } else if (mode === "denoise") {
-    ui.modeHint.textContent = "Noise is removed for any speaker; other voices stay.";
-  } else {
-    ui.modeHint.textContent = "The microphone, untouched.";
-  }
 }
 
 // ---------------------------------------------------------------------- enrolment
@@ -205,7 +193,7 @@ async function enrol() {
   tap.port.postMessage({ type: "record", on: true });
   const tick = setInterval(() => {
     const left = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
-    setStatus(`Keep talking… ${left} s`);
+    setStatus(`Learning… ${left}`);
   }, 200);
 
   await new Promise((resolve) => setTimeout(resolve, ENROL_SECONDS * 1000));
@@ -217,7 +205,7 @@ async function enrol() {
   silence.disconnect();
   const captured = chunks[0];
   if (!captured) {
-    setStatus("Nothing was recorded; try again.", "bad");
+    setStatus("Nothing recorded", "bad");
     ui.enrol.disabled = false;
     return;
   }
@@ -226,7 +214,7 @@ async function enrol() {
 
 /** Resamples to 16 kHz and posts the clip to the local encoder. */
 async function sendEnrolment(samples, rate) {
-  setStatus("Working out your voice print…");
+  setStatus("Learning…");
   const audio = rate === SAMPLE_RATE ? samples : await resample(samples, rate, SAMPLE_RATE);
   try {
     const response = await fetch("/enrol", {
@@ -240,9 +228,9 @@ async function sendEnrolment(samples, rate) {
     state.enrolled = true;
     ui.modes.find((b) => b.dataset.mode === "personal").disabled = false;
     setMode("personal");
-    setStatus(`Learned your voice from ${payload.seconds} s. Personal mode is on.`, "good");
+    setStatus("Personal mode on", "good");
   } catch (error) {
-    setStatus(`Enrolment failed: ${error.message}`, "bad");
+    setStatus(error.message, "bad");
   } finally {
     ui.enrol.disabled = false;
   }
@@ -267,15 +255,15 @@ function toggleRecording() {
   if (!state.node) return;
   state.recording = !state.recording;
   state.node.port.postMessage({ type: "record", on: state.recording });
-  ui.record.textContent = state.recording ? "Stop" : "Record a comparison";
+  ui.record.textContent = state.recording ? "Stop" : "Record comparison";
   ui.record.classList.toggle("is-on", state.recording);
   if (state.recording) {
-    ui.recordHint.textContent = `Recording… talk, and have someone else (or a video) talk too.`;
+    setStatus("Recording…", "good");
     setTimeout(() => {
       if (state.recording) toggleRecording();
     }, RECORD_SECONDS * 1000);
   } else {
-    ui.recordHint.textContent = "Play them back: the microphone, then what Earmark left.";
+    setStatus("Listening", "good");
   }
 }
 
@@ -363,9 +351,9 @@ for (const button of ui.modes) button.addEventListener("click", () => setMode(bu
 try {
   state.assets = await fetchAssets();
   ui.controls.hidden = false;
-  setStatus(`Engine and weights loaded (${HOP_LENGTH / (SAMPLE_RATE / 1000)} ms steps). Start the microphone.`);
+  setStatus("Ready");
   requestAnimationFrame(paint);
   if (new URLSearchParams(location.search).has("autostart")) await start();
 } catch (error) {
-  setStatus(`Could not load: ${error.message}`, "bad");
+  setStatus(error.message, "bad");
 }

@@ -16,14 +16,14 @@ back into the microphone and you hear the model chasing its own output.
 
 | Control | What it does |
 | --- | --- |
-| Start microphone | asks for the raw microphone (the browser's own noise suppression and echo cancellation are switched off, because they would fight the model) |
-| Use a sound file | plays a recording through the engine instead, for a repeatable demo |
-| Learn the voice | takes five seconds, sends it to the local server, and switches to Personal mode |
+| Start microphone | takes the raw microphone (the browser's own noise suppression and echo cancellation are switched off, because they would fight the model) |
+| Use a file | plays a recording through the engine instead, for a repeatable demo |
+| Learn my voice | five seconds to the local server, then Personal mode |
 | Off / Denoise / Personal | the raw microphone, the model with its learned NULL embedding, or the model conditioned on the enrolled voice |
-| Record a comparison | keeps what the microphone heard and what Earmark produced, side by side, to play back and save |
+| Record comparison | keeps the microphone and the output side by side, to play back and save |
 
-The meters show the microphone level, the output level and the model's personal-VAD
-probability ("you are speaking"), which is what the barge-in gate would use.
+The three meters are the microphone level, the output level, and the model's personal-VAD
+probability ("Voice"), which is what the barge-in gate would use.
 
 ## How it fits together
 
