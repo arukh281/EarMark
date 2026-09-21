@@ -28,7 +28,7 @@ PYTEST_ARGS ?=
 CACHE_DIRS = .cache/huggingface .cache/torch .cache/uv .cache/pip .cache/npm .cache/ms-playwright
 
 .PHONY: help test gates fetch-eval-data codegen contract-check goldens goldens-check \
-	engine engine-sanitize wasm eval-dev disk-guard clean-caches
+	engine engine-sanitize wasm eval-dev demo disk-guard clean-caches
 
 help:
 	@echo "make test              CPU unit tests (excludes the slow and gate markers)"
@@ -43,6 +43,7 @@ help:
 	@echo "make wasm              build earmark.wasm with em++ and smoke-test it in node (CI)"
 	@echo "make eval-dev EVAL_ARGS=\"--config M --checkpoint CKPT --manifest DEV/manifest.parquet ...\""
 	@echo "                       score Earmark-Synth dev with the PyTorch-stream runner"
+	@echo "make demo MODEL=weights.emwb  serve the browser demo on 127.0.0.1 (see web/README.md)"
 	@echo "make disk-guard        fail when less than 5 GiB is free"
 	@echo "make clean-caches      delete ./.cache downloads and Python caches"
 
@@ -65,6 +66,12 @@ contract-check:
 
 goldens:
 	PYTHONPATH=python $(PYTHON) -m earmark.export.golden
+
+# The browser demo. MODEL is the .emwb blob (its .json sits beside it); DEMO_ARGS passes
+# the rest, e.g. DEMO_ARGS="--port 9000 --wasm path/to/earmark.wasm".
+demo:
+	@test -n "$(MODEL)" || { echo "set MODEL=<weights.emwb> (see web/README.md)"; exit 1; }
+	PYTHONPATH=python $(PYTHON) -m earmark.demo --model "$(MODEL)" $(DEMO_ARGS)
 
 goldens-check:
 	PYTHONPATH=python $(PYTHON) -m earmark.export.golden --check

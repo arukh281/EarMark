@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Earmark</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230f1318'/%3E%3Cpath d='M11 21c0-6 3-10 7-10s6 3 6 6-2 4-4 4' stroke='%23f5b942' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>earmark<span>.</span></h1>
+        <p class="status" id="status">Loading&hellip;</p>
+      </header>
+
+      <section class="panel" id="controls" hidden>
+        <div class="bar-row">
+          <button id="start" class="primary">Start microphone</button>
+          <button id="file-btn" class="ghost">Use a file</button>
+          <input type="file" id="file" accept="audio/*" hidden />
+          <button id="enrol" disabled>Learn my voice</button>
+        </div>
+
+        <div class="segmented" role="group" aria-label="Mode">
+          <button class="mode" data-mode="off">Off</button>
+          <button class="mode is-on" data-mode="denoise">Denoise</button>
+          <button class="mode" data-mode="personal" disabled>Personal</button>
+        </div>
+
+        <div class="meters">
+          <div class="meter"><span>Mic</span><div class="bar"><i id="in-bar"></i></div></div>
+          <div class="meter"><span>Out</span><div class="bar out"><i id="out-bar"></i></div></div>
+          <div class="meter"><span>Voice</span><div class="bar vad"><i id="vad-bar"></i></div></div>
+        </div>
+      </section>
+
+      <section class="panel" id="record-panel" hidden>
+        <button id="record">Record comparison</button>
+        <div class="compare" id="compare" hidden>
+          <figure>
+            <figcaption>Before</figcaption>
+            <canvas id="wave-raw" width="900" height="96"></canvas>
+            <audio id="audio-raw" controls></audio>
+          </figure>
+          <figure>
+            <figcaption>After</figcaption>
+            <canvas id="wave-wet" width="900" height="96"></canvas>
+            <audio id="audio-wet" controls></audio>
+          </figure>
+        </div>
+      </section>
+
+      <footer>
+        <span id="fact-model">&mdash;</span>
+        <span id="fact-params">&mdash;</span>
+        <span id="fact-latency">&mdash;</span>
+        <span id="fact-rate">&mdash;</span>
+        <span class="local">runs on this machine</span>
+      </footer>
+    </main>
+    <script type="module" src="/src/app.js"></script>
+  </body>
+</html>
