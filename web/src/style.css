@@ -13,6 +13,9 @@
 
 * { box-sizing: border-box; }
 
+/* Panels set display, which would otherwise override the hidden attribute. */
+[hidden] { display: none !important; }
+
 body {
   margin: 0;
   padding: 56px 20px 40px;
@@ -45,6 +48,46 @@ h1 span { color: var(--amber); }
   gap: 16px;
 }
 
+/* Numbered steps: the live one is bright, the rest wait their turn. */
+.steps { margin: 0; padding: 0 0 0 26px; display: grid; gap: 12px; counter-reset: step; }
+.steps > li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  opacity: 0.55;
+  transition: opacity 150ms;
+}
+.steps > li.now { opacity: 1; }
+.steps > li::marker { color: var(--amber); font: 600 13px ui-monospace, Menlo, monospace; }
+.steps > li > .note { font-size: 13px; }
+.steps > li.now > .note { color: var(--text); }
+
+/* The enrolment script: big, readable, one sentence lit at a time. */
+.script {
+  flex-basis: 100%;
+  margin-top: 4px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--amber);
+  border-radius: 8px;
+  background: #11171d;
+}
+.script-lead { margin: 0 0 10px; color: var(--muted); font-size: 12px; letter-spacing: 0.04em; }
+.script-lines { margin: 0 0 14px; padding-left: 20px; display: grid; gap: 6px; }
+.script-lines li { color: var(--muted); font-size: 19px; line-height: 1.35; opacity: 1; transition: color 150ms; }
+.script-lines li::marker { color: var(--muted); font-size: 13px; }
+.script-lines li.reading { color: var(--text); }
+.script-lines li.reading::marker { color: var(--amber); }
+.progress { height: 4px; border-radius: 999px; background: #0b1015; overflow: hidden; }
+.progress i { display: block; height: 100%; width: 0; background: var(--amber); transition: width 100ms linear; }
+
+.options { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.toggle { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 13px; cursor: pointer; }
+.toggle b { color: var(--amber); font-weight: 600; }
+.toggle input { accent-color: var(--amber); }
+
 .bar-row { display: flex; flex-wrap: wrap; gap: 8px; }
 
 button {
@@ -71,8 +114,9 @@ button.is-on { border-color: var(--amber); color: var(--amber); }
 .segmented button:hover:not(:disabled):not(.is-on) { color: var(--text); }
 
 .meters { display: grid; gap: 8px; }
-.meter { display: grid; grid-template-columns: 44px 1fr; align-items: center; gap: 12px; }
+.meter { display: grid; grid-template-columns: 44px 1fr 62px; align-items: center; gap: 12px; }
 .meter span { color: var(--muted); font-size: 12px; }
+.meter em { color: var(--muted); font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; font-style: normal; text-align: right; }
 .bar { height: 6px; border-radius: 999px; background: #0e141a; overflow: hidden; }
 .bar i { display: block; height: 100%; width: 0; background: #4e5d6e; transition: width 80ms linear; }
 .bar.out i { background: var(--amber); }
