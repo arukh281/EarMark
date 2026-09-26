@@ -53,6 +53,7 @@ const state = {
   assets: null,
   clip: null, // an AudioBuffer when a file replaces the microphone
   clipSource: null,
+  micSource: null, // held on purpose: see start()
   lastRecording: null,
 };
 
@@ -90,6 +91,16 @@ function expectOk(response) {
 async function ensureEngine() {
   if (state.node) return;
   state.context = new AudioContext({ latencyHint: "interactive" });
+  // Safari suspends ("interrupted") the audio context when another app takes the audio
+  // device or the tab goes to the background; resume, and say so if that fails.
+  state.context.addEventListener("statechange", () => {
+    if (state.context.state === "running") return;
+    state.context.resume().catch(() => undefined);
+    if (state.context.state !== "running") setStatus("Audio paused by the browser — click the page to resume", "bad");
+  });
+  document.addEventListener("click", () => {
+    if (state.context && state.context.state !== "running") state.context.resume().catch(() => undefined);
+  });
   await state.context.audioWorklet.addModule("/src/worklet.js");
   state.node = new AudioWorkletNode(state.context, "earmark-engine", {
     numberOfInputs: 1,
@@ -122,7 +133,16 @@ async function start() {
     });
     await ensureEngine();
     stopClip();
-    state.context.createMediaStreamSource(state.stream).connect(state.node);
+    // Keep a reference: Safari (and older Firefox) garbage-collect an unreferenced
+    // MediaStreamAudioSourceNode, and the microphone then falls silent after a few seconds.
+    state.micSource = state.context.createMediaStreamSource(state.stream);
+    state.micSource.connect(state.node);
+    const [track] = state.stream.getAudioTracks();
+    track?.addEventListener("ended", () => {
+      setStatus("The microphone stopped — press Start microphone again", "bad");
+      ui.start.disabled = false;
+      setStep(0);
+    });
     setStatus("Microphone on — talk and watch the Mic bar", "good");
     setStep(1);
   } catch (error) {
