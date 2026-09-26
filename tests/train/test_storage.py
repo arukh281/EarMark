@@ -30,13 +30,30 @@ from earmark.train.train import RunLog, Trainer
 from .conftest import FakeClock, tiny_config
 
 
-def _not_found(repo_id: str) -> Exception:
-    try:
-        import httpx
+class _NotFoundResponse:
+    """Just enough of an HTTP response for huggingface_hub's error types.
 
-        request = httpx.Request("GET", f"https://huggingface.co/api/models/{repo_id}")
-        return RepositoryNotFoundError(f"{repo_id} not found", response=httpx.Response(404, request=request))
-    except (ImportError, TypeError):  # older huggingface_hub: (message, response=None)
+    The hub's HTTP client changes between major versions (httpx, then httpx2), but its
+    errors only read ``headers``, ``request`` and ``status_code``, so a stub works on all.
+    """
+
+    status_code = 404
+    text = ""
+
+    def __init__(self, url: str) -> None:
+        self.url = url
+        self.headers: dict[str, str] = {}
+        self.request = SimpleNamespace(method="GET", url=url)
+
+    def json(self) -> dict[str, str]:
+        return {}
+
+
+def _not_found(repo_id: str) -> Exception:
+    url = f"https://huggingface.co/api/models/{repo_id}"
+    try:
+        return RepositoryNotFoundError(f"{repo_id} not found", response=_NotFoundResponse(url))
+    except TypeError:  # older huggingface_hub: (message, response=None)
         return RepositoryNotFoundError(f"{repo_id} not found")
 
 
