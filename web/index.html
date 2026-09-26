@@ -18,40 +18,59 @@
       </header>
 
       <section class="panel" id="controls" hidden>
-        <div class="bar-row">
-          <button id="start" class="primary">Start microphone</button>
-          <button id="file-btn" class="ghost">Use a file</button>
-          <input type="file" id="file" accept="audio/*" hidden />
-          <button id="enrol" disabled>Learn my voice</button>
-        </div>
-
-        <div class="segmented" role="group" aria-label="Mode">
-          <button class="mode" data-mode="off">Off</button>
-          <button class="mode is-on" data-mode="denoise">Denoise</button>
-          <button class="mode" data-mode="personal" disabled>Personal</button>
-        </div>
+        <ol class="steps">
+          <li id="step-1" class="now">
+            <button id="start" class="primary">Start microphone</button>
+            <span class="note">Allow the microphone. The Mic bar should move when you talk.</span>
+          </li>
+          <li id="step-2">
+            <button id="enrol" disabled>Learn my voice</button>
+            <span class="note">Read three short sentences aloud, on your own (10 s).</span>
+            <div class="script" id="script" hidden>
+              <p class="script-lead">Read this aloud, at your normal pace:</p>
+              <ol class="script-lines" id="script-lines">
+                <li>The birch canoe slid on the smooth planks.</li>
+                <li>Glue the sheet to the dark blue background.</li>
+                <li>It is easy to tell the depth of a well.</li>
+              </ol>
+              <div class="progress"><i id="script-bar"></i></div>
+            </div>
+          </li>
+          <li id="step-3">
+            <button id="record" disabled>Record 12 s</button>
+            <span class="note">Talk, and let someone else talk too. Then play both back.</span>
+          </li>
+        </ol>
 
         <div class="meters">
-          <div class="meter"><span>Mic</span><div class="bar"><i id="in-bar"></i></div></div>
-          <div class="meter"><span>Out</span><div class="bar out"><i id="out-bar"></i></div></div>
-          <div class="meter"><span>Voice</span><div class="bar vad"><i id="vad-bar"></i></div></div>
+          <div class="meter"><span>Mic</span><div class="bar"><i id="in-bar"></i></div><em id="in-db">&mdash;</em></div>
+          <div class="meter"><span>Out</span><div class="bar out"><i id="out-bar"></i></div><em id="out-db">&mdash;</em></div>
+          <div class="meter"><span>Voice</span><div class="bar vad"><i id="vad-bar"></i></div><em id="vad-value">&mdash;</em></div>
+        </div>
+
+        <div class="options">
+          <div class="segmented" role="group" aria-label="Mode">
+            <button class="mode" data-mode="off">Off</button>
+            <button class="mode is-on" data-mode="denoise">Denoise</button>
+            <button class="mode" data-mode="personal" disabled>Personal</button>
+          </div>
+          <label class="toggle"><input type="checkbox" id="monitor" /> Hear it live <b>(headphones only)</b></label>
+          <button id="file-btn" class="ghost">Use a file</button>
+          <input type="file" id="file" accept="audio/*" hidden />
         </div>
       </section>
 
-      <section class="panel" id="record-panel" hidden>
-        <button id="record">Record comparison</button>
-        <div class="compare" id="compare" hidden>
-          <figure>
-            <figcaption>Before</figcaption>
-            <canvas id="wave-raw" width="900" height="96"></canvas>
-            <audio id="audio-raw" controls></audio>
-          </figure>
-          <figure>
-            <figcaption>After</figcaption>
-            <canvas id="wave-wet" width="900" height="96"></canvas>
-            <audio id="audio-wet" controls></audio>
-          </figure>
-        </div>
+      <section class="panel" id="compare" hidden>
+        <figure>
+          <figcaption>Before &mdash; what the microphone heard</figcaption>
+          <canvas id="wave-raw" width="900" height="88"></canvas>
+          <audio id="audio-raw" controls></audio>
+        </figure>
+        <figure>
+          <figcaption>After &mdash; what Earmark kept</figcaption>
+          <canvas id="wave-wet" width="900" height="88"></canvas>
+          <audio id="audio-wet" controls></audio>
+        </figure>
       </section>
 
       <footer>

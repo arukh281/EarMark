@@ -18,9 +18,10 @@ back into the microphone and you hear the model chasing its own output.
 | --- | --- |
 | Start microphone | takes the raw microphone (the browser's own noise suppression and echo cancellation are switched off, because they would fight the model) |
 | Use a file | plays a recording through the engine instead, for a repeatable demo |
-| Learn my voice | five seconds to the local server, then Personal mode |
+| Learn my voice | read three Harvard sentences aloud (10 s, the top of the 5-10 s range enrolment was trained on); the clip goes to the local server, then Personal mode |
 | Off / Denoise / Personal | the raw microphone, the model with its learned NULL embedding, or the model conditioned on the enrolled voice |
-| Record comparison | keeps the microphone and the output side by side, to play back and save |
+| Record 12 s | keeps the microphone and the output side by side, then plays the output; both can be saved |
+| Hear it live | off by default: sends the output to the speakers, which only makes sense on headphones |
 
 The three meters are the microphone level, the output level, and the model's personal-VAD
 probability ("Voice"), which is what the barge-in gate would use.

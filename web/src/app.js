@@ -1,26 +1,37 @@
-// The demo page: microphone -> earmark.wasm (AudioWorklet) -> headphones.
+// The demo page: microphone -> earmark.wasm (AudioWorklet) -> a before/after you can play.
 //
-// This file does the parts that must not happen on the audio thread: fetching the
-// engine and the weights, asking for the microphone, sending the five-second enrolment
-// clip to the local server, and drawing. The processing itself is in worklet.js.
+// This file does the parts that must not happen on the audio thread: fetching the engine
+// and the weights, the microphone, the five-second enrolment, the comparison recording and
+// the drawing. The processing itself is in worklet.js.
+//
+// The output is muted by default. Live monitoring through speakers feeds back into the
+// microphone, which is worse than useless, so "hear it live" is opt-in and says headphones.
 import { SAMPLE_RATE } from "/src/constants.js";
 
-const ENROL_SECONDS = 5;
+// Ten seconds is the top of the 5-10 s range the model's enrolment clips were drawn from
+// in training; a longer, varied clip gives a steadier voice print. The script is three
+// Harvard sentences (IEEE 1969, public domain), written to cover English phonemes
+// evenly, and about ten seconds read at a normal pace.
+const ENROL_SECONDS = 10;
 const RECORD_SECONDS = 12;
 
 const ui = {
   status: document.getElementById("status"),
   controls: document.getElementById("controls"),
+  steps: [1, 2, 3].map((n) => document.getElementById(`step-${n}`)),
   start: document.getElementById("start"),
+  enrol: document.getElementById("enrol"),
+  record: document.getElementById("record"),
+  monitor: document.getElementById("monitor"),
   fileButton: document.getElementById("file-btn"),
   file: document.getElementById("file"),
-  enrol: document.getElementById("enrol"),
   modes: Array.from(document.querySelectorAll(".mode")),
   inBar: document.getElementById("in-bar"),
   outBar: document.getElementById("out-bar"),
   vadBar: document.getElementById("vad-bar"),
-  recordPanel: document.getElementById("record-panel"),
-  record: document.getElementById("record"),
+  inDb: document.getElementById("in-db"),
+  outDb: document.getElementById("out-db"),
+  vadValue: document.getElementById("vad-value"),
   compare: document.getElementById("compare"),
   facts: {
     model: document.getElementById("fact-model"),
@@ -33,14 +44,17 @@ const ui = {
 const state = {
   context: null,
   node: null,
+  monitor: null,
   stream: null,
   mode: "denoise",
   meters: { vad: 0, input: 0, output: 0 },
   enrolled: false,
   recording: false,
   assets: null,
-  clip: null, // an AudioBuffer when playing a file instead of the microphone
+  clip: null, // an AudioBuffer when a file replaces the microphone
   clipSource: null,
+  micSource: null, // held on purpose: see start()
+  lastRecording: null,
 };
 
 // Exposed so an automated browser test can drive the page without a real microphone.
@@ -49,6 +63,11 @@ window.earmark = state;
 function setStatus(text, kind = "") {
   ui.status.textContent = text;
   ui.status.className = `status ${kind}`;
+}
+
+/** Marks which numbered step is live, so it is obvious what to do next. */
+function setStep(index) {
+  ui.steps.forEach((li, i) => li.classList.toggle("now", i === index));
 }
 
 async function fetchAssets() {
@@ -72,6 +91,16 @@ function expectOk(response) {
 async function ensureEngine() {
   if (state.node) return;
   state.context = new AudioContext({ latencyHint: "interactive" });
+  // Safari suspends ("interrupted") the audio context when another app takes the audio
+  // device or the tab goes to the background; resume, and say so if that fails.
+  state.context.addEventListener("statechange", () => {
+    if (state.context.state === "running") return;
+    state.context.resume().catch(() => undefined);
+    if (state.context.state !== "running") setStatus("Audio paused by the browser — click the page to resume", "bad");
+  });
+  document.addEventListener("click", () => {
+    if (state.context && state.context.state !== "running") state.context.resume().catch(() => undefined);
+  });
   await state.context.audioWorklet.addModule("/src/worklet.js");
   state.node = new AudioWorkletNode(state.context, "earmark-engine", {
     numberOfInputs: 1,
@@ -82,7 +111,9 @@ async function ensureEngine() {
   const { wasm, blob, manifest } = state.assets;
   state.node.port.postMessage({ type: "init", wasm, blob, manifest }, [wasm, blob, manifest]);
   state.assets = null; // the buffers moved to the audio thread
-  state.node.connect(state.context.destination);
+  // Silent by default: the engine keeps running, nothing reaches the speakers.
+  state.monitor = new GainNode(state.context, { gain: ui.monitor.checked ? 1 : 0 });
+  state.node.connect(state.monitor).connect(state.context.destination);
   await state.context.resume();
   ui.facts.rate.textContent = `${state.context.sampleRate.toLocaleString()} Hz`;
 }
@@ -102,8 +133,18 @@ async function start() {
     });
     await ensureEngine();
     stopClip();
-    state.context.createMediaStreamSource(state.stream).connect(state.node);
-    setStatus("Listening", "good");
+    // Keep a reference: Safari (and older Firefox) garbage-collect an unreferenced
+    // MediaStreamAudioSourceNode, and the microphone then falls silent after a few seconds.
+    state.micSource = state.context.createMediaStreamSource(state.stream);
+    state.micSource.connect(state.node);
+    const [track] = state.stream.getAudioTracks();
+    track?.addEventListener("ended", () => {
+      setStatus("The microphone stopped — press Start microphone again", "bad");
+      ui.start.disabled = false;
+      setStep(0);
+    });
+    setStatus("Microphone on — talk and watch the Mic bar", "good");
+    setStep(1);
   } catch (error) {
     ui.start.disabled = false;
     setStatus(error.message, "bad");
@@ -118,6 +159,7 @@ async function loadFile(file) {
     const bytes = await file.arrayBuffer();
     state.clip = await state.context.decodeAudioData(bytes);
     setStatus(`Playing ${file.name}`, "good");
+    setStep(1);
     playClip();
   } catch (error) {
     setStatus(error.message, "bad");
@@ -142,10 +184,9 @@ function stopClip() {
 
 function onWorkletMessage(msg) {
   if (msg.type === "ready") {
-    setStatus("Listening", "good");
     ui.facts.latency.textContent = `${(msg.latencySeconds * 1000).toFixed(1)} ms`;
     ui.enrol.disabled = false;
-    ui.recordPanel.hidden = false;
+    ui.record.disabled = false;
     setMode(state.mode);
     return;
   }
@@ -169,20 +210,52 @@ function setMode(mode) {
 // ---------------------------------------------------------------------- enrolment
 
 async function enrol() {
-  if (!state.context) return;
-  ui.enrol.disabled = true;
-  if (state.clip) {
-    // Enrol from the start of the loaded recording, where the target voice speaks alone.
-    const wanted = Math.min(state.clip.length, Math.round(ENROL_SECONDS * state.clip.sampleRate));
-    const samples = state.clip.getChannelData(0).slice(0, wanted);
-    await sendEnrolment(samples, state.clip.sampleRate);
+  if (!state.context) {
+    setStatus("Start the microphone first", "bad");
     return;
   }
-  const deadline = Date.now() + ENROL_SECONDS * 1000;
+  ui.enrol.disabled = true;
+  setStep(1);
+  if (state.clip) {
+    // From the start of the loaded recording, where the target voice speaks alone.
+    const wanted = Math.min(state.clip.length, Math.round(ENROL_SECONDS * state.clip.sampleRate));
+    await sendEnrolment(state.clip.getChannelData(0).slice(0, wanted), state.clip.sampleRate);
+    return;
+  }
+  const captured = await readScript();
+  if (!captured) {
+    setStatus("Nothing was recorded — is the microphone on?", "bad");
+    ui.enrol.disabled = false;
+    return;
+  }
+  await sendEnrolment(captured.raw, captured.sampleRate);
+}
+
+/** Shows the script, lights each sentence in turn, and records while it is read. */
+async function readScript() {
+  const panel = document.getElementById("script");
+  const bar = document.getElementById("script-bar");
+  const lines = Array.from(document.querySelectorAll("#script-lines li"));
+  panel.hidden = false;
+  const started = Date.now();
+  const captured = await captureSeconds(ENROL_SECONDS, (left) => {
+    const done = Math.min(1, (Date.now() - started) / (ENROL_SECONDS * 1000));
+    bar.style.width = `${(done * 100).toFixed(1)}%`;
+    const current = Math.min(lines.length - 1, Math.floor(done * lines.length));
+    lines.forEach((li, i) => li.classList.toggle("reading", i === current));
+    setStatus(`Read aloud… ${left}`, "good");
+  });
+  bar.style.width = "100%";
+  lines.forEach((li) => li.classList.remove("reading"));
+  panel.hidden = true;
+  return captured;
+}
+
+/** Records `seconds` of the raw microphone through a tap that has no engine. */
+async function captureSeconds(seconds, onTick) {
   const chunks = [];
   const source = state.context.createMediaStreamSource(state.stream);
   const tap = new AudioWorkletNode(state.context, "earmark-engine", { numberOfOutputs: 1, outputChannelCount: [1] });
-  // The tap has no engine, so it just forwards the microphone; record through it.
   tap.port.onmessage = (event) => {
     if (event.data.type === "recording") chunks.push(event.data);
   };
@@ -191,30 +264,21 @@ async function enrol() {
   source.connect(tap);
   tap.connect(silence).connect(state.context.destination);
   tap.port.postMessage({ type: "record", on: true });
-  const tick = setInterval(() => {
-    const left = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
-    setStatus(`Learning… ${left}`);
-  }, 200);
-
-  await new Promise((resolve) => setTimeout(resolve, ENROL_SECONDS * 1000));
+  const deadline = Date.now() + seconds * 1000;
+  const tick = setInterval(() => onTick(Math.max(0, Math.ceil((deadline - Date.now()) / 1000))), 100);
+  await new Promise((resolve) => setTimeout(resolve, seconds * 1000));
   clearInterval(tick);
   tap.port.postMessage({ type: "record", on: false });
-  await new Promise((resolve) => setTimeout(resolve, 120));
+  await new Promise((resolve) => setTimeout(resolve, 150));
   source.disconnect();
   tap.disconnect();
   silence.disconnect();
-  const captured = chunks[0];
-  if (!captured) {
-    setStatus("Nothing recorded", "bad");
-    ui.enrol.disabled = false;
-    return;
-  }
-  await sendEnrolment(captured.raw, captured.sampleRate);
+  return chunks[0];
 }
 
 /** Resamples to 16 kHz and posts the clip to the local encoder. */
 async function sendEnrolment(samples, rate) {
-  setStatus("Learning…");
+  setStatus("Working out your voice…");
   const audio = rate === SAMPLE_RATE ? samples : await resample(samples, rate, SAMPLE_RATE);
   try {
     const response = await fetch("/enrol", {
@@ -228,7 +292,8 @@ async function sendEnrolment(samples, rate) {
     state.enrolled = true;
     ui.modes.find((b) => b.dataset.mode === "personal").disabled = false;
     setMode("personal");
-    setStatus("Personal mode on", "good");
+    setStatus("Got your voice — now record the comparison", "good");
+    setStep(2);
   } catch (error) {
     setStatus(error.message, "bad");
   } finally {
@@ -251,20 +316,27 @@ async function resample(samples, from, to) {
 
 // ---------------------------------------------------------------------- comparison
 
-function toggleRecording() {
-  if (!state.node) return;
-  state.recording = !state.recording;
-  state.node.port.postMessage({ type: "record", on: state.recording });
-  ui.record.textContent = state.recording ? "Stop" : "Record comparison";
-  ui.record.classList.toggle("is-on", state.recording);
-  if (state.recording) {
-    setStatus("Recording…", "good");
-    setTimeout(() => {
-      if (state.recording) toggleRecording();
-    }, RECORD_SECONDS * 1000);
-  } else {
-    setStatus("Listening", "good");
+async function record() {
+  if (!state.node) {
+    setStatus("Start the microphone first", "bad");
+    return;
   }
+  ui.record.disabled = true;
+  ui.enrol.disabled = true;
+  state.recording = true;
+  state.node.port.postMessage({ type: "record", on: true });
+  const deadline = Date.now() + RECORD_SECONDS * 1000;
+  const hint = state.enrolled ? "someone else should talk too" : "(no voice learned yet)";
+  const tick = setInterval(
+    () => setStatus(`Recording… ${Math.max(0, Math.ceil((deadline - Date.now()) / 1000))} — ${hint}`, "good"),
+    200,
+  );
+  await new Promise((resolve) => setTimeout(resolve, RECORD_SECONDS * 1000));
+  clearInterval(tick);
+  state.recording = false;
+  state.node.port.postMessage({ type: "record", on: false });
+  ui.record.disabled = false;
+  ui.enrol.disabled = false;
 }
 
 function showComparison({ raw, processed, sampleRate }) {
@@ -272,8 +344,12 @@ function showComparison({ raw, processed, sampleRate }) {
   ui.compare.hidden = false;
   drawWave(document.getElementById("wave-raw"), raw, "#7c8796");
   drawWave(document.getElementById("wave-wet"), processed, "#f5b942");
+  const wet = document.getElementById("audio-wet");
   document.getElementById("audio-raw").src = URL.createObjectURL(wavBlob(raw, sampleRate));
-  document.getElementById("audio-wet").src = URL.createObjectURL(wavBlob(processed, sampleRate));
+  wet.src = URL.createObjectURL(wavBlob(processed, sampleRate));
+  setStatus("Play Before, then After", "good");
+  setStep(2);
+  wet.play().catch(() => undefined); // blocked autoplay is fine: the controls are right there
 }
 
 function drawWave(canvas, samples, colour) {
@@ -328,30 +404,39 @@ function wavBlob(samples, rate) {
 
 // ---------------------------------------------------------------------- meters
 
+const dbText = (value) => (value > 1e-4 ? `${(20 * Math.log10(value)).toFixed(0)} dB` : "quiet");
+
 function paint() {
   const { vad, input, output } = state.meters;
   ui.inBar.style.width = `${Math.min(100, input * 140)}%`;
   ui.outBar.style.width = `${Math.min(100, output * 140)}%`;
   ui.vadBar.style.width = `${Math.min(100, vad * 100)}%`;
+  ui.inDb.textContent = dbText(input);
+  ui.outDb.textContent = dbText(output);
+  ui.vadValue.textContent = vad.toFixed(2);
   requestAnimationFrame(paint);
 }
 
 // ---------------------------------------------------------------------- boot
 
 ui.start.addEventListener("click", start);
+ui.enrol.addEventListener("click", enrol);
+ui.record.addEventListener("click", record);
+ui.monitor.addEventListener("change", () => {
+  if (state.monitor) state.monitor.gain.value = ui.monitor.checked ? 1 : 0;
+  if (ui.monitor.checked) setStatus("Live output on — headphones, or it will feed back", "good");
+});
 ui.fileButton.addEventListener("click", () => ui.file.click());
 ui.file.addEventListener("change", () => {
   const [file] = ui.file.files ?? [];
   if (file) loadFile(file);
 });
-ui.enrol.addEventListener("click", enrol);
-ui.record.addEventListener("click", toggleRecording);
 for (const button of ui.modes) button.addEventListener("click", () => setMode(button.dataset.mode));
 
 try {
   state.assets = await fetchAssets();
   ui.controls.hidden = false;
-  setStatus("Ready");
+  setStatus("Ready — start with step 1");
   requestAnimationFrame(paint);
   if (new URLSearchParams(location.search).has("autostart")) await start();
 } catch (error) {
