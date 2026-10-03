@@ -103,7 +103,7 @@ Every source and its licence is listed in [docs/DATA_AND_LICENSES.md](docs/DATA_
 - **Real rooms, not only synthetic mixes:** LibriCSS meeting-room recordings, plus a
   laptop-microphone set recorded with volunteers' consent ([consent form](docs/CONSENT_TEMPLATE.md))
   and released.
-- **Baselines:** DeepFilterNet3 followed by a speaker-verification gate, and a raw personal gate.
+- **Baselines:** DeepFilterNet3 followed by a speaker-verification gate; Silero VAD followed by a speaker-verification gate, for barge-in; and a raw personal gate.
 - **Metrics:** false barge-ins per minute and onset delay; PESQ-WB, ESTOI and SI-SDR
   improvement; Whisper word error rate; end-to-end latency measured with an acoustic loopback.
 - **No peeking:** every threshold is frozen on dev before any test run, and every scored run
