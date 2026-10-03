@@ -65,6 +65,8 @@ class DemoConfig:
     host: str = "127.0.0.1"
     port: int = 8000
     enrol: bool = True
+    #: Where "Save for analysis" writes comparison recordings; None disables saving.
+    save_dir: Path | None = None
 
     @property
     def manifest(self) -> Path:
@@ -86,6 +88,51 @@ class DemoConfig:
             )
         if not (self.web_root / "index.html").is_file():
             raise FileNotFoundError(f"no page at {self.web_root / 'index.html'}")
+
+
+#: A saved comparison is two float32 clips (base64 in JSON); 30 s at 48 kHz fits easily.
+MAX_SAVE_BYTES = 64 * 1024 * 1024
+
+
+def _decode_f32(text: str) -> np.ndarray:
+    """Base64 little-endian float32 -> array (what the page sends)."""
+    import base64
+
+    raw = base64.b64decode(text, validate=True)
+    if len(raw) % 4:
+        raise ValueError("audio is not whole float32 samples")
+    audio = np.frombuffer(raw, dtype="<f4").astype(np.float32)
+    if not np.isfinite(audio).all():
+        raise ValueError("audio contains NaN or infinity")
+    return audio
+
+
+def _write_wav(path: Path, audio: np.ndarray, rate: int) -> None:
+    import wave
+
+    pcm = (np.clip(audio, -1.0, 1.0) * 32767.0).astype("<i2")
+    with wave.open(str(path), "wb") as handle:
+        handle.setnchannels(1)
+        handle.setsampwidth(2)
+        handle.setframerate(rate)
+        handle.writeframes(pcm.tobytes())
+
+
+def save_recording(
+    root: Path, rate: int, before: np.ndarray, after: np.ndarray, vad: list[float], meta: dict[str, Any]
+) -> Path:
+    """One timestamped folder: before.wav (microphone), after.wav (output), vad.json."""
+    from datetime import datetime
+
+    folder = root / datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    folder.mkdir(parents=True, exist_ok=True)
+    _write_wav(folder / "before.wav", before, rate)
+    _write_wav(folder / "after.wav", after, rate)
+    (folder / "vad.json").write_text(
+        json.dumps({"sample_rate": rate, "values_per_second": rate / 128, "vad": vad, "meta": meta}) + "\n",
+        encoding="utf-8",
+    )
+    return folder
 
 
 class Enroller:
@@ -172,7 +219,10 @@ def build_handler(config: DemoConfig, enroller: Enroller | None = None) -> type[
         def do_GET(self) -> None:  # noqa: N802 - http.server's name
             route = self.path.split("?", 1)[0]
             if route == "/health":
-                self._send_json(HTTPStatus.OK, {"ok": True, "model": config.model.name, "enrol": config.enrol})
+                self._send_json(
+                    HTTPStatus.OK,
+                    {"ok": True, "model": config.model.name, "enrol": config.enrol, "save": config.save_dir is not None},
+                )
                 return
             if route == "/engine/earmark.wasm":
                 self._send_file(config.wasm)
@@ -189,7 +239,32 @@ def build_handler(config: DemoConfig, enroller: Enroller | None = None) -> type[
                 return
             self._send_file(path)
 
+        def _save(self) -> None:
+            """Writes a comparison (before.wav, after.wav, vad.json) under ``config.save_dir``."""
+            if config.save_dir is None:
+                self._send_json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "saving is off (start with --save-dir)"})
+                return
+            length = int(self.headers.get("Content-Length") or 0)
+            if length <= 0 or length > MAX_SAVE_BYTES:
+                self.close_connection = True
+                self._send_json(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, {"error": f"body must be 1..{MAX_SAVE_BYTES} bytes"})
+                return
+            try:
+                payload = json.loads(self.rfile.read(length))
+                rate = int(payload["sampleRate"])
+                before = _decode_f32(payload["raw"])
+                after = _decode_f32(payload["processed"])
+                vad = [float(v) for v in payload.get("vad", [])]
+            except (ValueError, KeyError, TypeError) as exc:
+                self._send_json(HTTPStatus.BAD_REQUEST, {"error": f"bad recording: {exc}"})
+                return
+            folder = save_recording(config.save_dir, rate, before, after, vad, payload.get("meta") or {})
+            self._send_json(HTTPStatus.OK, {"saved": str(folder)})
+
         def do_POST(self) -> None:  # noqa: N802 - http.server's name
+            if self.path.split("?", 1)[0] == "/save":
+                self._save()
+                return
             if self.path.split("?", 1)[0] != "/enrol":
                 self._send_json(HTTPStatus.NOT_FOUND, {"error": f"no route {self.path}"})
                 return
@@ -239,10 +314,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--host", default="127.0.0.1", help="bind address (keep it local)")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--no-enrol", action="store_true", help="serve without the speaker encoder")
+    parser.add_argument(
+        "--save-dir", type=Path, default=None, help="enable Save for analysis, writing recordings here"
+    )
     args = parser.parse_args(argv)
 
     config = DemoConfig(
-        model=args.model, wasm=args.wasm, host=args.host, port=args.port, enrol=not args.no_enrol
+        model=args.model,
+        wasm=args.wasm,
+        host=args.host,
+        port=args.port,
+        enrol=not args.no_enrol,
+        save_dir=args.save_dir,
     )
     try:
         server = serve(config)

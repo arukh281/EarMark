@@ -54,6 +54,7 @@
             <button class="mode is-on" data-mode="denoise">Denoise</button>
             <button class="mode" data-mode="personal" disabled>Personal</button>
           </div>
+          <label class="toggle"><input type="checkbox" id="gate" checked /> Only let me through</label>
           <label class="toggle"><input type="checkbox" id="monitor" /> Hear it live <b>(headphones only)</b></label>
           <button id="file-btn" class="ghost">Use a file</button>
           <input type="file" id="file" accept="audio/*" hidden />
@@ -67,10 +68,14 @@
           <audio id="audio-raw" controls></audio>
         </figure>
         <figure>
-          <figcaption>After &mdash; what Earmark kept</figcaption>
+          <figcaption>After &mdash; what Earmark kept <span class="legend">green line: &ldquo;is this you&rdquo;</span></figcaption>
           <canvas id="wave-wet" width="900" height="88"></canvas>
           <audio id="audio-wet" controls></audio>
         </figure>
+        <div class="save-row" id="save-row" hidden>
+          <button id="save">Save for analysis</button>
+          <span class="note" id="save-note">Writes both clips to this Mac, so they can be checked.</span>
+        </div>
       </section>
 
       <footer>
