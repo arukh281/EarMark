@@ -144,3 +144,7 @@ footer .local { margin-left: auto; }
   .status { text-align: left; }
   footer .local { margin-left: 0; }
 }
+
+.legend { margin-left: 10px; color: var(--good); font-size: 11px; }
+.save-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.save-row .note { color: var(--muted); font-size: 12px; }

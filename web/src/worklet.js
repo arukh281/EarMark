@@ -15,6 +15,13 @@
 const EM_OK = 0;
 const METER_INTERVAL_QUANTA = 8; // ~21 ms at 48 kHz: smooth on screen, cheap here
 const MAX_RECORD_SECONDS = 30;
+// Gate settings. The attack sits above the dev-matched 95%-recall threshold (0.20) so a
+// voice the model only half-believes is you stays shut; the hold bridges gaps between words.
+const GATE_ATTACK = 0.35;
+const GATE_RELEASE = 0.2;
+const GATE_HOLD_SECONDS = 0.25;
+const GATE_RISE_SECONDS = 0.005;
+const GATE_FALL_SECONDS = 0.08;
 
 class EarmarkProcessor extends AudioWorkletProcessor {
   constructor() {
@@ -29,7 +36,17 @@ class EarmarkProcessor extends AudioWorkletProcessor {
     this.recording = false;
     this.rawChunks = [];
     this.wetChunks = [];
+    this.vadTrace = [];
     this.recordedFrames = 0;
+    // "Only let me through": in Personal mode, silence the output while the model's
+    // personal VAD says the enrolled speaker is not talking. Open at ATTACK, stay open
+    // while above RELEASE, and hold for HOLD after that so word gaps are not chopped.
+    // The gain ramps (fast up, slower down) so it never clicks.
+    this.gateOn = true;
+    this.gateOpen = false;
+    this.gateHold = 0;
+    this.gateGain = 0;
+    this.gated = new Float32Array(128);
     this.port.onmessage = (event) => {
       this.handle(event.data).catch((error) => {
         this.port.postMessage({ type: "error", error: String(error && error.message ? error.message : error) });
@@ -42,7 +59,27 @@ class EarmarkProcessor extends AudioWorkletProcessor {
     if (msg.type === "mode") return this.setMode(msg.mode);
     if (msg.type === "embedding") return this.setEmbedding(msg.embedding);
     if (msg.type === "record") return this.setRecording(msg.on);
+    if (msg.type === "gate") {
+      this.gateOn = Boolean(msg.on);
+      return undefined;
+    }
     return undefined;
+  }
+
+  /** Gain for this quantum's samples, from the latest VAD (one decision per quantum). */
+  updateGate(frames) {
+    const personal = this.mode === "personal" && this.hasEmbedding;
+    if (!personal || !this.gateOn) {
+      this.gateOpen = true;
+      this.gateHold = GATE_HOLD_SECONDS * sampleRate;
+    } else if (this.vad >= GATE_ATTACK || (this.gateOpen && this.vad >= GATE_RELEASE)) {
+      this.gateOpen = true;
+      this.gateHold = GATE_HOLD_SECONDS * sampleRate;
+    } else {
+      this.gateHold -= frames;
+      if (this.gateHold <= 0) this.gateOpen = false;
+    }
+    return this.gateOpen ? 1 : 0;
   }
 
   // ------------------------------------------------------------------ set-up
@@ -112,6 +149,7 @@ class EarmarkProcessor extends AudioWorkletProcessor {
     if (on) {
       this.rawChunks = [];
       this.wetChunks = [];
+      this.vadTrace = [];
       this.recordedFrames = 0;
       this.recording = true;
       return;
@@ -119,9 +157,15 @@ class EarmarkProcessor extends AudioWorkletProcessor {
     this.recording = false;
     const raw = concat(this.rawChunks, this.recordedFrames);
     const processed = concat(this.wetChunks, this.recordedFrames);
+    const vad = Float32Array.from(this.vadTrace); // one value per 128-frame quantum
     this.rawChunks = [];
     this.wetChunks = [];
-    this.port.postMessage({ type: "recording", raw, processed, sampleRate }, [raw.buffer, processed.buffer]);
+    this.vadTrace = [];
+    this.port.postMessage({ type: "recording", raw, processed, vad, sampleRate, quantum: 128 }, [
+      raw.buffer,
+      processed.buffer,
+      vad.buffer,
+    ]);
   }
 
   /** Keeps both signals while recording, up to MAX_RECORD_SECONDS. */
@@ -157,8 +201,18 @@ class EarmarkProcessor extends AudioWorkletProcessor {
       return true;
     }
     const processed = new Float32Array(this.memory.buffer, this.outPtr, frames);
-    output.set(this.mode === "off" ? input : processed);
     this.vad = new Float32Array(this.memory.buffer, this.vadPtr, 1)[0];
+
+    // The gate, sample-smoothed so it opens in ~5 ms and closes over ~80 ms.
+    const target = this.updateGate(frames);
+    const rise = 1 - Math.exp(-1 / (GATE_RISE_SECONDS * sampleRate));
+    const fall = 1 - Math.exp(-1 / (GATE_FALL_SECONDS * sampleRate));
+    const gated = this.gated.subarray(0, frames);
+    for (let i = 0; i < frames; i += 1) {
+      this.gateGain += (target - this.gateGain) * (target > this.gateGain ? rise : fall);
+      gated[i] = processed[i] * this.gateGain;
+    }
+    output.set(this.mode === "off" ? input : gated);
 
     for (let i = 0; i < frames; i += 1) {
       const dry = Math.abs(input[i]);
@@ -166,7 +220,8 @@ class EarmarkProcessor extends AudioWorkletProcessor {
       if (dry > this.inPeak) this.inPeak = dry;
       if (wet > this.outPeak) this.outPeak = wet;
     }
-    this.capture(input, processed, frames);
+    if (this.recording && this.recordedFrames < MAX_RECORD_SECONDS * sampleRate) this.vadTrace.push(this.vad);
+    this.capture(input, gated, frames);
     this.quanta += 1;
     if (this.quanta % METER_INTERVAL_QUANTA === 0) {
       this.port.postMessage({ type: "meters", vad: this.vad, input: this.inPeak, output: this.outPeak });

@@ -339,11 +339,13 @@ async function record() {
   ui.enrol.disabled = false;
 }
 
-function showComparison({ raw, processed, sampleRate }) {
-  state.lastRecording = { raw, processed, sampleRate };
+function showComparison({ raw, processed, vad, sampleRate }) {
+  state.lastRecording = { raw, processed, vad, sampleRate };
   ui.compare.hidden = false;
   drawWave(document.getElementById("wave-raw"), raw, "#7c8796");
   drawWave(document.getElementById("wave-wet"), processed, "#f5b942");
+  if (vad) drawTrace(document.getElementById("wave-wet"), vad, "#7ddba4");
+  document.getElementById("save-note").textContent = "Writes both clips to this Mac, so they can be checked.";
   const wet = document.getElementById("audio-wet");
   document.getElementById("audio-raw").src = URL.createObjectURL(wavBlob(raw, sampleRate));
   wet.src = URL.createObjectURL(wavBlob(processed, sampleRate));
@@ -373,6 +375,54 @@ function drawWave(canvas, samples, colour) {
     }
     const bar = Math.max(1, peak * height * 0.9);
     ctx.fillRect(x, (height - bar) / 2, 1, bar);
+  }
+}
+
+/** The personal-VAD score over the recording, as a line from 0 (bottom) to 1 (top). */
+function drawTrace(canvas, values, colour) {
+  const ctx = canvas.getContext("2d");
+  const { width, height } = canvas;
+  ctx.strokeStyle = colour;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  values.forEach((value, i) => {
+    const x = (i / Math.max(1, values.length - 1)) * width;
+    const y = height - 3 - value * (height - 6);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+}
+
+/** Sends the last comparison to the local server, which writes it to disk. */
+async function saveRecording() {
+  const rec = state.lastRecording;
+  const note = document.getElementById("save-note");
+  if (!rec) return;
+  const b64 = (floats) => {
+    const bytes = new Uint8Array(floats.buffer, floats.byteOffset, floats.byteLength);
+    let text = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) text += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return btoa(text);
+  };
+  note.textContent = "Saving…";
+  try {
+    const response = await fetch("/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sampleRate: rec.sampleRate,
+        raw: b64(rec.raw),
+        processed: b64(rec.processed),
+        vad: Array.from(rec.vad ?? []),
+        meta: { mode: state.mode, gate: document.getElementById("gate").checked, enrolled: state.enrolled },
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error ?? `HTTP ${response.status}`);
+    note.textContent = `Saved to ${payload.saved}`;
+  } catch (error) {
+    note.textContent = `Could not save: ${error.message}`;
   }
 }
 
@@ -426,6 +476,10 @@ ui.monitor.addEventListener("change", () => {
   if (state.monitor) state.monitor.gain.value = ui.monitor.checked ? 1 : 0;
   if (ui.monitor.checked) setStatus("Live output on — headphones, or it will feed back", "good");
 });
+document.getElementById("gate").addEventListener("change", (event) => {
+  state.node?.port.postMessage({ type: "gate", on: event.target.checked });
+});
+document.getElementById("save").addEventListener("click", saveRecording);
 ui.fileButton.addEventListener("click", () => ui.file.click());
 ui.file.addEventListener("change", () => {
   const [file] = ui.file.files ?? [];
@@ -436,6 +490,8 @@ for (const button of ui.modes) button.addEventListener("click", () => setMode(bu
 try {
   state.assets = await fetchAssets();
   ui.controls.hidden = false;
+  const health = await fetch("/health").then((r) => r.json()).catch(() => ({}));
+  document.getElementById("save-row").hidden = !health.save;
   setStatus("Ready — start with step 1");
   requestAnimationFrame(paint);
   if (new URLSearchParams(location.search).has("autostart")) await start();
