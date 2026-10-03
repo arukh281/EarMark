@@ -83,10 +83,10 @@ flowchart TB
   | S-SSM (S4D state-space) | 0.26M | 31.1 MMAC/s |
 
 - **Engine.** A dependency-free C++17 streaming engine behind a small C API, compiled to
-  WebAssembly in CI. It already runs the full signal path (resampling, STFT, ERB features
-  and synthesis), matches the Python goldens, and allocates no memory after start-up.
-  **Wiring the network in is this week's work;** until then it passes audio through
-  unchanged and reports no speech.
+  WebAssembly in CI. It runs the whole model (resampling, STFT, encoders, GRU, gains, deep
+  filter, personal VAD), matches PyTorch to about 1e-7 in both native and WebAssembly
+  builds, and allocates no memory after start-up. The [browser demo](web/README.md) runs it
+  live from the microphone.
 - **One signal contract.** `contract/signal.yaml` generates the constants for Python, C++ and
   JavaScript, so the three implementations cannot drift apart.
 
